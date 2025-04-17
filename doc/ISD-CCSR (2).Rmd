@@ -22,6 +22,8 @@ The negative relationship between abundance and body size is one of the most wid
 
 ```{r load data}
 library(here)
+library(junkR)
+library(vegan)
 library(tidyverse)
 library(tidybayes)
 library(cowplot)
@@ -31,16 +33,39 @@ library(rstan)
 library(brms)
 library(viridis)
 library(mgcv)
+library(hillR)
 theme_set(theme_minimal())
 
 options(mc.cores = parallel::detectCores(),
         scipen = 5)
 rstan::rstan_options(auto_write = TRUE)
+# read in the data for species richness across sites
+
+s_dat_tot = readRDS(here("data/macro_dw_sizebytaxa.rds")) %>% 
+  select(site_id = siteID, taxonID = acceptedTaxonID, no_m2) %>%
+  named_group_split(site_id) %>% 
+  purrr::map(~.x %>% pivot_wider(-site_id, names_from = taxonID, values_from = no_m2, values_fn = sum) %>% unlist %>% round %>% .[.>0] %>% na.omit %>%   estimateR(.)) %>% 
+  bind_rows(.id = 'site_id') %>% 
+  select(site_id, S.obs)
+
+H_dat = readRDS(here("data/macro_dw_sizebytaxa.rds")) %>% 
+  select(site_id = siteID, collectDate, taxonID = acceptedTaxonID, no_m2) %>% 
+  mutate(collectDate = as.Date(collectDate)) %>% 
+  summarise(no_m2 = sum(no_m2), .by = c(site_id, collectDate, taxonID)) %>% 
+  # named_group_split(site_id) %>% 
+  pivot_wider(id_cols = c(site_id, collectDate), names_from = taxonID, values_from = no_m2, values_fill = 0)
+
+H_dat$hill_0 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 0)
+H_dat$hill_1 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 1)
+H_dat$hill_2 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 2)
+
+# range(s_dat$S.obs);(390-124)/124
 
 # read in data and calc sample level summaries
 dw_dat = readRDS(here("data/dat_fish_inverts_dw_allyears.rds")) %>% 
-  group_by(site_id, sample_id) %>% 
-  mutate(n_sum = sum(no_m2),
+  group_by(site_id, collectDate = macro_julian, sample_id) %>% 
+  mutate(collectDate = as.Date(collectDate),
+         n_sum = sum(no_m2),
          n_rel = no_m2/n_sum,
          b_m2 = no_m2*dw,
          b_sum = sum(b_m2),
@@ -48,35 +73,127 @@ dw_dat = readRDS(here("data/dat_fish_inverts_dw_allyears.rds")) %>%
 
 # get weighted mean body size
 dw_dat_summ = dw_dat %>% 
-  group_by(site_id, sample_id) %>% 
+  ungroup %>% 
+  mutate(dw_met = dw^0.75) %>%
+  group_by(site_id, collectDate, sample_id) %>% 
   summarise(n_tot = sum(n_sum),
             ln_tot = log10(n_tot),
+            mbar_n_met = weighted.mean(dw_met, w = n_rel),
+            mbar_b_met = weighted.mean(dw_met, w = b_rel),
             mbar_n = weighted.mean(dw, w = n_rel),
             mbar_b = weighted.mean(dw, w = b_rel),
-            mbar_n0.75 = weighted.mean(dw^0.75, w = n_rel),
-            mbar_b0.75 = weighted.mean(dw^0.75, w = b_rel),
+            lmbar_n_met = log10(mbar_n_met),
+            lmbar_b_met = log10(mbar_b_met),
             lmbar_n = log10(mbar_n),
             lmbar_b = log10(mbar_b),
-            lmbar_n0.75 = log10(mbar_n0.75),
-            lmbar_b0.75 = log10(mbar_b0.75),
             b_m2 = unique(b_sum),
+            lb_m2 = log10(b_m2),
             m_max = max(dw, na.rm = TRUE)) %>% 
   ungroup %>% 
-  mutate(across(all_of(c("ln_tot", "lmbar_n","lmbar_b","lmbar_n0.75", "lmbar_b0.75")), ~as.numeric(scale(.)), .names  = "{.col}_s"))%>% 
+  mutate(across(all_of(c("ln_tot", "lmbar_n_met", "lmbar_b_met", "lmbar_n", "lmbar_b")), ~as.numeric(scale(.)), .names  = "{.col}_s"))%>% 
   left_join(dw_dat %>% ungroup %>% select(site_id, gpp, log_gpp_s, log_om_s, mat_s) %>% distinct(), by = 'site_id')
 
 # read in lambdas by sample_id
 lambdas = read_csv(here("data/post_sample_lambdas.csv")) %>% 
   select(sample_id, lambda_med = '.epred', lower_lambda = '.lower', upper_lambda = '.upper') 
 
-dw_dat_summ = merge(dw_dat_summ, lambdas, by = 'sample_id', all = TRUE) 
-rm("lambdas", "dw_dat")
+dw_dat_summ = merge(dw_dat_summ, lambdas, by = 'sample_id', all = TRUE) %>% 
+  left_join(s_dat_tot, by = "site_id") %>% 
+  left_join(H_dat %>% select(site_id, collectDate, hill_0, hill_1, hill_2) %>% summarise(across(matches("hill"), mean), .by = site_id), by ='site_id')
+
+rm("lambdas", "dw_dat") 
 ```
+
+```{r richness models}
+output = capture.output(brm(bf(lb_m2 ~ hill_0),# + (1|site_id)),
+                        data = dw_dat_summ,
+                        family = gaussian(link = 'identity'),
+                        iter = 1000,
+                        thin = 1,
+                        file_refit = 'on_change',
+                        file = here("data/models/b_s"),
+                        chains = 4,
+                        cores = 4,
+                        seed = 1312
+                        ))
+
+b_s_lm = readRDS(here("data/models/b_s.rds"))
+b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
+b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
+b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0 = S.obs))
+
+b_s_pred = dw_dat_summ %>% 
+  data_grid(site_id = site_id,
+            hill_0 = S.obs) %>% 
+  # add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA) ~(1|site_id))
+
+b_breaks = seq.int(round(min(dw_dat_summ$lb_m2)), round(max(dw_dat_summ$lb_m2)), by = 2)
+b_labels = format(10^b_range, scientific = TRUE)
+
+b_s_pred_plot = b_s_pred %>% 
+  ggplot()+
+  geom_path(aes(x = hill_0, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dw_dat_summ, aes(x = S.obs, y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5)+
+  scale_x_continuous(name = "Species richness")+
+  scale_y_continuous(name = expression(log[10]*"(Biomass)[ g"~m^-2*")"),
+                     limits = c(2,6),
+                     breaks = b_breaks#,
+                     # labels = b_labels
+                     )+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none');b_s_pred_plot
+
+
+#%>% 
+  left_join(dw_dat_summ %>% select(site_id, lb_m2, lambda_med, log_gpp_s, log_om_s), by = 'S.obs') 
+```
+
 
 ```{r corrected models}
 ## calculate the bayesian linear regression
+### metabolic mass models
 
-output = capture.output(brm(bf(ln_tot_s~lmbar_n0.75_s+(1 + lmbar_n0.75_s|site_id)),
+output = capture.output(brm(bf(ln_tot_s~lmbar_n_met_s+(1 + lmbar_n_met_s|site_id)),
+              data = dw_dat_summ,
+              family = gaussian(link = 'identity'),
+              iter = 1000,
+              thin = 1,
+              file_refit = 'never',
+              file = here("data/models/NM_met_nwt"),
+              chains = 4, cores = 4,
+              seed = 1312
+              )
+)
+NM_met_nwt = readRDS(here("data/models/NM_met_nwt.rds"))
+NM_met_nwt_int =fixef(NM_met_nwt)[1,'Estimate']
+
+NM_met_nwt_pred = dw_dat_summ %>% 
+  data_grid(lmbar_n_met_s = lmbar_n_met_s) %>% 
+  mutate(pred = NM_met_nwt_int + lmbar_n_met_s*-1)%>% 
+  left_join(dw_dat_summ %>% select(site_id, lmbar_n_met_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s), by = 'lmbar_n_met_s') %>% 
+  mutate(resid_theory = ln_tot_s - pred)
+
+output = capture.output(brm(bf(ln_tot_s~lmbar_b_met_s+(1 + lmbar_b_met_s|site_id)),
+              data = dw_dat_summ,
+              family = gaussian(link = 'identity'),
+              iter = 1000,
+              thin = 1,
+              file_refit = 'never',
+              file = here("data/models/NM_met_bwt"),
+              chains = 4, cores = 4,
+              seed = 1312
+              ))
+NM_met_bwt = readRDS(here("data/models/NM_met_bwt.rds"))
+NM_met_bwt_int =fixef(NM_met_bwt)[1,'Estimate']
+
+NM_met_bwt_pred = dw_dat_summ %>% 
+  data_grid(lmbar_b_met_s = lmbar_b_met_s) %>%
+  mutate(pred = NM_met_bwt_int + lmbar_b_met_s*-1) %>% 
+  left_join(dw_dat_summ %>% select( site_id, lmbar_b_met_s, ln_tot_s, lambda_med, log_gpp_s,log_om_s), by = 'lmbar_b_met_s') %>% 
+  mutate(resid_theory = ln_tot_s - pred)
+
+## raw body mass models
+output = capture.output(brm(bf(ln_tot_s~lmbar_n_s),
               data = dw_dat_summ,
               family = gaussian(link = 'identity'),
               iter = 1000,
@@ -96,60 +213,107 @@ NM_nwt_ranef = ranef(NM_nwt)$site_id
 NM_nwt_slopes = NM_nwt_ranef[,,'lmbar_n0.75_s']
 
 NM_nwt_pred = dw_dat_summ %>% 
-  data_grid(lmbar_n0.75_s = lmbar_n0.75_s) %>% 
-  mutate(pred = NM_nwt_int + lmbar_n0.75_s*-0.75)%>% 
-  left_join(dw_dat_summ %>% select(site_id, lmbar_n0.75_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s, m_max), by = 'lmbar_n0.75_s') %>% 
+  data_grid(lmbar_n_s = lmbar_n_s) %>% 
+  mutate(pred = NM_nwt_int + lmbar_n_s*-1)%>% 
+  left_join(dw_dat_summ %>% select(site_id, lmbar_n_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s), by = 'lmbar_n_s') %>% 
   mutate(resid_theory = ln_tot_s - pred)
+
+output = capture.output(brm(bf(ln_tot_s~lmbar_b_s),
+              data = dw_dat_summ,
+              family = gaussian(link = 'identity'),
+              iter = 1000,
+              thin = 1,
+              file_refit = 'never',
+              file = here("data/models/NM_bwt"),
+              chains = 4, cores = 4,
+              seed = 1312
+              ))
+NM_bwt = readRDS(here("data/models/NM_bwt.rds"))
+NM_bwt_int =fixef(NM_bwt)[1,'Estimate']
+
+NM_bwt_pred = dw_dat_summ %>% 
+  data_grid(lmbar_b_s = lmbar_b_s) %>%
+  mutate(pred = NM_bwt_int + lmbar_b_s*-1) %>% 
+  left_join(dw_dat_summ %>% select( site_id, lmbar_b_s, ln_tot_s, lambda_med, log_gpp_s,log_om_s), by = 'lmbar_b_s') %>% 
+  mutate(resid_theory = ln_tot_s - pred)
+
+```
+
+Further, the theories of self-thinning and energy equivalence upon which the CCSR is based upon derive from individual energy use, which body size is only a proxy for. We can adjust body mass, *sensu stricto*, to metabolic mass by adjusting for the metabolic scaling exponent, $M^{\alpha}$, where $\alpha$ usually takes values in the range of 0.6 -- 0.75. Also, care must be taken about how metabolic mass is calculated. Because, individual metabolism is a non-linear function with mass, $f(\overline{x}) \neq \overline{f(x)}$ [@Jensen 1979] and the proper value to use is to first calculate metabolic mass for each individual, $m^{\alpha}_{i}$, and then average across all individual metabolic mass measurements for a sampling timepoint. The difference in these measurements can be observed below.
+
+```{r NB met comparison}
+
+dw_dat_summ %>% 
+  ggplot()+
+  geom_point(aes(x = lmbar_n_met, lmbar_b_met, color = site_id), size = 1.3)+
+  scale_color_viridis(discrete = TRUE)+
+  geom_abline()+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"))+
+  scale_y_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"))+
+  theme(legend.position = 'none')
 
 ```
 
 ## Theory of body size--abundance
 
 # Methods
-
 ## Study sites
 
 ## Data sets
 
-Macros and fish
+### Macros and fish
 
-## Environmental Variables
+### Environmental Variables
 
-Temp
+#### Temp
 
-GPP
+#### GPP
 
-OM
+#### OM
 
 ## Statistical analyses
 
-community N~M
+### community N~M
 
-truncated pareto
+### truncated pareto
 
-Mixed-effects models were fit with
+### Mixed-effects models were fit with
 
 # Results
 
 Total community abundances ranged ~`r (dw_dat_summ %>% select(ln_tot) %>% max - dw_dat_summ %>% select(ln_tot) %>% min) %>% round` order of magnitude from `r dw_dat_summ %>% select(n_tot) %>% min %>% signif(2) %>% format(scientific = TRUE)` to `r dw_dat_summ %>% select(n_tot) %>% max %>% signif(2) %>% format(scientific = TRUE)` with average community abundance of `r dw_dat_summ %>% select(n_tot) %>% unlist %>%  mean(na.rm = TRUE) %>% signif(2) %>% format(scientific = TRUE)` $\pm$ `r dw_dat_summ %>% select(n_tot) %>% unlist %>% sd %>% signif(2) %>% format(scientific = TRUE)` individuals m^-2^. Community mean body sizes exhibited a similar range  from `r dw_dat_summ %>% select(mbar_n) %>% min %>% signif(2) %>% format(scientific = TRUE)` to `r dw_dat_summ %>% select(mbar_n) %>% max %>% signif(2) %>% format(scientific = TRUE)` with an average community mean body size of `r dw_dat_summ %>% select(mbar_n) %>% unlist %>% mean(na.rm = TRUE) %>% round(2)` $\pm$ `r dw_dat_summ %>% select(mbar_n) %>% unlist %>% sd(na.rm = TRUE) %>% round(2)` mg dry mass individual^-1^. 
 
-The cross community relationship between community mean body size and total community abundance exhibited little evidence of a clear relationship between these variables aross NEON streams (Figure 1). The median slope estimate between $log_{10} \overline{M^{0.75}}$ and $log_{10} N_{total}$ was `r fixef(NM_nwt)['lmbar_n0.75_s','Estimate'] %>% round(2)` (`r fixef(NM_nwt)['lmbar_n0.75_s','Q2.5'] %>% round(2)`--`r fixef(NM_nwt)['lmbar_n0.75_s','Q97.5'] %>% round(2)`; 95% credible interval). Within-site slope estimates ranged from `r NM_nwt_slopes %>% data.frame %>% slice_min(Estimate) %>% select(Estimate) %>% signif(2)` $\pm$ `r NM_nwt_slopes %>% data.frame %>% slice_min(Estimate) %>% select(Q2.5) %>% signif(2)` -- `r NM_nwt_slopes %>% data.frame %>% slice_min(Estimate) %>% select(Q97.5) %>% signif(2)` to `r NM_nwt_slopes %>% data.frame %>% slice_max(Estimate) %>% select(Estimate) %>% signif(2)` $\pm$ `r NM_nwt_slopes %>% data.frame %>% slice_max(Estimate) %>% select(Q2.5) %>% signif(2)` -- `r NM_nwt_slopes %>% data.frame %>% slice_max(Estimate) %>% select(Q97.5) %>% signif(2)` (Figure 1 inset).
+Total community biomass 
+
+The cross community relationship between community mean body size and total community abundance exhibited little evidence of a clear relationship between these variables aross NEON streams (Figure 1). The median slope estimate between $log_{10} \overline{M^{0.75}}$ and $log_{10} N_{total}$ was `r fixef(NM_nwt)['lmbar_n_met_s','Estimate'] %>% round(2)` (`r fixef(NM_nwt)['lmbar_n_met_s','Q2.5'] %>% round(2)`--`r fixef(NM_nwt)['lmbar_n_met_s','Q97.5'] %>% round(2)`; 95% credible interval). Within-site slope estimates ranged from `r NM_nwt_slopes %>% data.frame %>% slice_min(Estimate) %>% select(Estimate) %>% signif(2)` $\pm$ `r NM_nwt_slopes %>% data.frame %>% slice_min(Estimate) %>% select(Q2.5) %>% signif(2)` -- `r NM_nwt_slopes %>% data.frame %>% slice_min(Estimate) %>% select(Q97.5) %>% signif(2)` to `r NM_nwt_slopes %>% data.frame %>% slice_max(Estimate) %>% select(Estimate) %>% signif(2)` $\pm$ `r NM_nwt_slopes %>% data.frame %>% slice_max(Estimate) %>% select(Q2.5) %>% signif(2)` -- `r NM_nwt_slopes %>% data.frame %>% slice_max(Estimate) %>% select(Q97.5) %>% signif(2)` (Figure 1 inset).
 
 To explore drivers of over- or under-yielding, 
 
+```{r N-Mn_met plot, fig.cap='Figure 1. The scaling of community abundances by community abundance-weighted metabolic mass across the NEON streams.'}
 
+# create label vector for scaled breaks. s 
+lntot_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$ln_tot) + mean(dw_dat_summ$ln_tot)),1), scientific = TRUE)
 
+lmbar_n_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_n_met) + mean(dw_dat_summ$lmbar_n_met)),1), scientific = TRUE)
 
-
-
-
-
-
+dw_dat_summ %>% 
+data_grid(lmbar_n_met_s = seq_range(lmbar_n_met_s, n = 51)) %>%
+  add_epred_draws(NM_met_nwt, ndraws = 100) %>% 
+  ggplot()+
+  geom_line(data = NM_met_nwt_pred, aes(x = lmbar_n_met_s, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+
+  geom_point(data = dw_dat_summ, aes(x = lmbar_n_met_s, y = ln_tot_s, color = site_id))+
+  geom_line(aes(x = lmbar_n_met_s, y = .epred, group = .draw), alpha = 0.1)+
+  geom_smooth(data = dw_dat_summ, aes(x = lmbar_n_met_s, y = ln_tot_s), se = FALSE, method = 'gam')+
+  scale_color_viridis(discrete = TRUE)+
+  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3.5, 3.5), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n_met_s_labels)+
+  theme(legend.position = 'none')
+```
 
 ```{r N-Mn plot, fig.cap='Figure 1. The scaling of community abundances by community mean body size across the NEON streams. Transparent grey lines represent a random sample of posterior draws from a linear model (n = 100), while the dotted line represents the relationship predicted by theory, $N ~ \\overline{M^{-0.75}}$. The linear model was fit on centered and scaled data and axis back-transformed to the original scale. The inset shows the predicted site-specific relationships between community abundance and mean body size from the mixed-effects model.'}
 
 # create label vector for scaled breaks. s 
-lntot_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$ln_tot) + mean(dw_dat_summ$ln_tot)),1), scientific = TRUE)
+# lntot_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$ln_tot) + mean(dw_dat_summ$ln_tot)),1), scientific = TRUE)
 
 lmbar_n0.75_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_n0.75) + mean(dw_dat_summ$lmbar_n0.75)),1), scientific = TRUE)
 
@@ -164,37 +328,116 @@ inset = dw_dat_summ %>%
   scale_color_viridis(discrete = TRUE, alpha = 0.8)+
   scale_fill_viridis(discrete = TRUE)+
   scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3.5, 3.5), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n0.75_s_labels)+
-  theme(legend.position = 'none',
+  scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n_s_labels)+
+theme(legend.position = 'none',
         axis.title = element_blank(),
         axis.text = element_blank(),
         panel.border = element_rect(color = 'black', fill = 'transparent'),
         panel.background = element_rect())
+```
+
+```{r N-Mb_met plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'}
+lmbar_b_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_b_met) + mean(dw_dat_summ$lmbar_b_met)),1), scientific = TRUE)
 
 dw_dat_summ %>% 
-data_grid(lmbar_n0.75_s = seq_range(lmbar_n0.75_s, n = 51)) %>%
+data_grid(lmbar_b_met_s = seq_range(lmbar_b_met_s, n = 51)) %>%
+  add_epred_draws(NM_met_bwt, ndraws = 100) %>% 
+  ggplot()+
+  geom_line(data = NM_met_bwt_pred, aes(x = lmbar_b_met_s, y = pred), linewidth = 1.1, linetype =   'dotted', color = 'darkgrey')+
+  geom_point(data = dw_dat_summ, aes(x = lmbar_b_met_s, y = ln_tot_s, color = site_id))+
+  geom_line(aes(x = lmbar_b_met_s, y = .epred, group = .draw), alpha = 0.1)+
+  geom_smooth(data = dw_dat_summ, aes(x = lmbar_b_met_s, y = ln_tot_s), se = FALSE, method = 'gam')+
+  scale_color_viridis(discrete = TRUE)+
+  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3, 3), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"), limits = c(-3.5,3), breaks = seq.int(-3,3, by = 1), labels = lmbar_b_met_s_labels)+
+  theme(legend.position = 'none')
+```
+
+```{r N-Mb plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'}
+lmbar_b_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_b) + mean(dw_dat_summ$lmbar_b)),1), scientific = TRUE)
+
+dw_dat_summ %>% 
+data_grid(lmbar_n_s = seq_range(lmbar_n_met_s, n = 51)) %>%
   add_epred_draws(NM_nwt, re_formula = NA, ndraws = 100) %>% 
   ggplot()+
-  geom_line(data = NM_nwt_pred, aes(x = lmbar_n0.75_s, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+
-  # geom_smooth(data = dw_dat_summ, aes(x = lmbar_n0.75_s, y = ln_tot_s, group = site_id, color = site_id, fill = site_id), se = FALSE, method = 'lm', alpha = 0.5)+
-  geom_point(data = dw_dat_summ, aes(x = lmbar_n0.75_s, y = ln_tot_s, fill = site_id), shape = 21)+
-  geom_line(aes(x = lmbar_n0.75_s, y = .epred, group = .draw), alpha = 0.1)+
-  annotation_custom(as_grob(inset), xmin = 1.2, xmax = 4.5, ymin = 0.9, ymax = 3.5)+
-  scale_color_viridis(discrete = TRUE, alpha =0.3)+
-  scale_fill_viridis(discrete = TRUE)+
-  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3.5, 3.5), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n0.75_s_labels)+
+  geom_line(data = NM_bwt_pred, aes(x = lmbar_b_s, y = pred), linewidth = 1.1, linetype =   'dotted', color = 'darkgrey')+
+  geom_point(data = dw_dat_summ, aes(x = lmbar_b_s, y = ln_tot_s, color = site_id))+
+  geom_line(aes(x = lmbar_b_s, y = .epred, group = .draw), alpha = 0.1)+
+  geom_smooth(data = dw_dat_summ, aes(x = lmbar_b_s, y = ln_tot_s), se = FALSE, method = 'gam')+
+  scale_color_viridis(discrete = TRUE)+
+  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3, 3), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"), limits = c(-3.5,3), breaks = seq.int(-3,3, by = 1), labels = lmbar_b_met_s_labels)+
   theme(legend.position = 'none')
-
 
 ```
 
+```{r met residual analysis}
+
+NMbarN_met_res = residuals(NM_met_nwt) %>%  data.frame %>% select(NMnwt_met_res = 'Estimate', NMnwt_met_2.5 = 'Q2.5', NMnwt_met_97.5 = 'Q97.5') 
+NMbarB_met_res = residuals(NM_met_bwt) %>% data.frame %>% select(NMbwt_met_res = 'Estimate', NMbwt_met_2.5 = 'Q2.5', NMbwt_met_97.5 = 'Q97.5') 
+
+dw_dat_summ = dw_dat_summ %>% bind_cols(NMbarN_met_res) %>% bind_cols(NMbarB_met_res) %>% left_join(s_dat, by = "site_id")
+
+output = capture.output(brm(bf(NMnwt_met_res~lambda_med), 
+                            data = dw_dat_summ,
+                            family = gaussian(link = 'identity'),
+                            iter = 1000,
+                            thin = 1,
+                            file_refit = 'on_change',
+                            file = here("data/models/NM_nwt_met_res"),
+                            chains = 4, cores = 4,
+                            seed = 1312
+                            ))
+
+NMnwt_met_res = readRDS(here("data/models/NM_nwt_met_res.rds"))
+
+output = capture.output(brm(bf(NMbwt_met_res~lambda_med), 
+                            data = dw_dat_summ,
+                            family = gaussian(link = 'identity'),
+                            iter = 1000,
+                            thin = 1,
+                            file_refit = 'on_change',
+                            file = here("data/models/NM_bwt_met_res"),
+                            chains = 4, cores = 4,
+                            seed = 1312
+                            ))
+
+NMbwt_met_res = readRDS(here("data/models/NM_bwt_met_res.rds"))
+
+isd_NMnwt_met_plot = dw_dat_summ %>% 
+  add_epred_draws(NMnwt_met_res, ndraws = 100) %>% 
+  ggplot()+
+  geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
+  geom_point(aes(x = lambda_med,y = NMnwt_met_res, color = site_id))+
+  scale_color_viridis(discrete = TRUE)+
+  labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+
+  theme(legend.position = 'none',
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+isd_NMbwt_met_plot = dw_dat_summ %>% 
+  add_epred_draws(NMbwt_met_res, ndraws = 100) %>% 
+  ggplot()+
+  geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
+  geom_point(aes(y = NMbwt_met_res, x = lambda_med, color = site_id))+
+  scale_color_viridis(discrete = TRUE)+
+  labs(subtitle = expression("N-"*bar(M^0.75)['biomass-weighted']))+
+  theme(legend.position = 'none',
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+gridExtra::grid.arrange(isd_NMnwt_met_plot, isd_NMbwt_met_plot, ncol =2,
+                        bottom = expression(!Lamdba),
+                        left = expression(paste("\U03B5 (residuals from N")))#,bar(M^0.75), ")")))
+
+```
 
 
 ```{r residual analysis, fig.cap="Figure X. The relationship between the individual size distribution rate parameter $\\lambda$ and residuals from the fitted cross community size relationship."}
 
 NMbarN_res = residuals(NM_nwt) %>%  data.frame %>% select(NMnwt_res = 'Estimate', NMnwt_2.5 = 'Q2.5', NMnwt_97.5 = 'Q97.5') 
 
+dw_dat_summ = dw_dat_summ %>% bind_cols(NMbarN_res) %>% bind_cols(NMbarB_res) %>% left_join(s_dat, by = "site_id")
 
 dw_dat_summ = dw_dat_summ %>% bind_cols(NMbarN_res) 
 
@@ -350,9 +593,6 @@ effectDf %>%
 
 ```
 
-
-
-
 ```{r N and B models}
 
 # ## relationships with gpp
@@ -494,7 +734,29 @@ gridExtra::grid.arrange(grobs = list(as_grob(M_nbwt_plot),
 #   mutate(pred = NM_nwt_int + lmbar_n_s*-1)%>% 
 #   left_join(dw_dat_summ %>% select(site_id, lmbar_n_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s), by = 'lmbar_n_s') %>% 
 #   mutate(resid_theory = ln_tot_s - pred)
+```
 
+```{r met-corrected-bodysize-comparison}
+
+dw_dat_summ %>% 
+  ggplot()+
+  geom_point(aes(x = lmbar_n_met, lmbar_n, color = site_id), size = 1.3)+
+  scale_color_viridis(discrete = TRUE)+
+  geom_abline()+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"))+
+  scale_y_continuous(name = expression(log[10]*"("*bar(M)["abund-weighted"]*")"))+
+  theme(legend.position = 'none')
+
+dw_dat_summ %>% 
+  ggplot()+
+  geom_point(aes(x = lmbar_b_met, lmbar_b, color = site_id), size = 1.3)+
+  scale_color_viridis(discrete = TRUE)+
+  geom_abline()+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"))+
+  scale_y_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"))+
+  theme(legend.position = 'none')
+
+```
 
 # output = capture.output(brm(bf(ln_tot_s~lmbar_b_s),
 #               data = dw_dat_summ,
@@ -515,8 +777,6 @@ gridExtra::grid.arrange(grobs = list(as_grob(M_nbwt_plot),
 #   mutate(pred = NM_bwt_int + lmbar_b_s*-1) %>% 
 #   left_join(dw_dat_summ %>% select( site_id, lmbar_b_s, ln_tot_s, lambda_med, log_gpp_s,log_om_s), by = 'lmbar_b_s') %>% 
 #   mutate(resid_theory = ln_tot_s - pred)
-
-```
 
 ```{r N-Mn uncorrected plot, fig.cap='Figure S2. The scaling of community abundances by community abundance-weighted body size across the NEON streams.'}
 
@@ -556,7 +816,7 @@ lmbar_b_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_b) + mea
 #   theme(legend.position = 'none')
 ```
 
-```{r N-Mb plot,fig.cap='Figure S4. The scaling of community abundances by community biomass-weighted body size across the NEON streams.The blue line represents a generalized additive model fit to the data. Transparent grey lines represent a random sample of posterior draws from a linear model (n = 100).'}
+```{r N-Mb plot2,fig.cap='Figure S4. The scaling of community abundances by community biomass-weighted body size across the NEON streams.The blue line represents a generalized additive model fit to the data. Transparent grey lines represent a random sample of posterior draws from a linear model (n = 100).'}
 
 # output = capture.output(brm(bf(ln_tot_s~lmbar_b0.75_s),
 #               data = dw_dat_summ,

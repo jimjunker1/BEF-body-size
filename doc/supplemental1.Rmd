@@ -6,8 +6,11 @@ author:
       institute: [unt, aeri]
       correspondence: true
   - name: Jeff S. Wesner
+    institute: usd
   - name: Justin Pomeranz
+    institute: cmu
   - name: Vojsava Gjoni
+    institute: ital
 institute:
   - unt: Dept. of Biological Sciences, University of North Texas, Denton, TX USA
   - aeri: Advanced Environmental Research Institute, University of North Texas, Denton, TX USA
@@ -34,6 +37,14 @@ link-color: grey
 csl: ecology.csl
 ---
 
+```{r init, include = FALSE }
+
+knitr::opts_chunk$set(echo = FALSE,message = FALSE,warning = FALSE)
+
+here::i_am("doc/supplemental1.Rmd")
+
+```
+
 The expectation (i.e., mean) for the double-truncated Pareto distribution, defined on the interval $[a,b]$ with shape parameter $\lambda$ $\neq$ -1 is:
 $$f(m) = (\lambda + 1)(m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1})^{-1}m^{\lambda}$$ {#eq:pdf}
 The expectation, or mean, body size, $E(m)$, can then be described as:
@@ -46,3 +57,4 @@ From here, we can re-express the total density, $N_{tot}$, as if we wanted to ca
 
 $$N_{new} = N_{tot} \cdot \frac{\int_{m_{min}}^{\hat{m}_{max}}f(m)dm}{\int_{\hat{m}_{min}}^{\hat{m}_{max}}f(m)dm}$$ {#eq:N_mult}
 From these new estimates, we can also estimate the total biomass, $B_{tot}$ by multiplying our new estimate of abundance by our new estimate of the expected (mean) body size, $B_{new} = N_{new} \cdot E(m)$.
+
