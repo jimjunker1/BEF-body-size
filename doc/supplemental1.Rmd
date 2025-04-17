@@ -56,5 +56,5 @@ From this we can use the estimated $\lambda$ from our truncated Pareto model in 
 From here, we can re-express the total density, $N_{tot}$, as if we wanted to calculate densities within portions of the range. Specifically, $N_{tot}$ is re-expressed as the density of individuals observed multiplied by the probability density function (eqn. 1). $N_{tot}$ represents the density of individuals over this interval $[\hat{m}_{min}, \hat{m}_{max}]$ and therefore the pdf sums to 1 by definition. We can then estimate the proportional multiplier to adjust $N_{tot}$ over the new interval $[m_{min}, \hat{m}_{max}]$ by taking the ratio of the pdfs multiplied by the observed density:
 
 $$N_{new} = N_{tot} \cdot \frac{\int_{m_{min}}^{\hat{m}_{max}}f(m)dm}{\int_{\hat{m}_{min}}^{\hat{m}_{max}}f(m)dm}$$ {#eq:N_mult}
-From these new estimates, we can also estimate the total biomass, $B_{tot}$ by multiplying our new estimate of abundance by our new estimate of the expected (mean) body size, $B_{new} = N_{new} \cdot E(m)$.
+From these new estimates, we can also estimate the total biomass, $B_{tot}$ by multiplying our new estimate of abundance by our new estimate of the expected (mean) body size, $B_{new} = N_{new} \cdot E(m)$. This may slightly
 
