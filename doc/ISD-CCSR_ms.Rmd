@@ -1,14 +1,46 @@
 ---
-author: Jim Junker
+title: ""
 date: '`r format(Sys.Date())`'
-title: ISD-CCSR comparison
-output: html_document
-bibliography: refs.bib
+author:
+  - James R. Junker:
+      email: james.junker@unt.edu
+      institute: [unt, aeri]
+      correspondence: true
+  - name: Jeff S. Wesner
+    institute: usd
+  - name: Justin Pomeranz
+    institute: cmu
+  - name: Vojsava Gjoni
+    institute: ital
+institute:
+  - unt: Dept. of Biological Sciences, University of North Texas, Denton, TX USA
+  - aeri: Advanced Environmental Research Institute, University of North Texas, Denton, TX USA
+output:
+  word_document:
+    reference_docx: working_docx_template.docx
+    toc: no
+    pandoc_args:
+      - '--lua-filter=scholarly-metadata.lua'
+      - '--lua-filter=author-info-blocks.lua'
+      - '--filter=pandoc-crossref.exe'
+header-includes:
+- \usepackage{lineno}
+- \usepackage{amsmath}
+- \usepackage{indentfirst}
+- \usepackage{nicefrac}
+- \numberwithin{equation}
+- \linenumbers
+indent: true
+linestretch: 1
+bibliography: supp_refs.bib
+link-citations: no
+link-color: grey
+csl: ecology.csl
 ---
 
 ```{r init, echo = FALSE, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-here::i_am("doc/ISD-CCSR.Rmd")
+here::i_am("doc/ISD-CCSR_ms.Rmd")
 ```
 
 ## Purpose
@@ -44,7 +76,7 @@ rstan::rstan_options(auto_write = TRUE)
 s_dat_tot = readRDS(here("data/macro_dw_sizebytaxa.rds")) %>% 
   select(site_id = siteID, taxonID = acceptedTaxonID, no_m2) %>%
   named_group_split(site_id) %>% 
-  purrr::map(~.x %>% pivot_wider(-site_id, names_from = taxonID, values_from = no_m2, values_fn = sum) %>% unlist %>% round %>% .[.>0] %>% na.omit %>%   estimateR(.)) %>% 
+  purrr::map(~.x %>% pivot_wider(-site_id, names_from = taxonID, values_from = no_m2, values_fn = sum) %>% unlist %>% round %>% .[.>0] %>% na.omit %>%  estimateR(.)) %>% 
   bind_rows(.id = 'site_id') %>% 
   select(site_id, S.obs)
 
