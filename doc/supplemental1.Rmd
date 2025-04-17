@@ -1,0 +1,48 @@
+---
+title: "Body size expectation of from truncated Pareto with 'true' lower bound "
+author:
+  - James R. Junker:
+      email: james.junker@unt.edu
+      institute: [unt, aeri]
+      correspondence: true
+  - name: Jeff S. Wesner
+  - name: Justin Pomeranz
+  - name: Vojsava Gjoni
+institute:
+  - unt: Dept. of Biological Sciences, University of North Texas, Denton, TX USA
+  - aeri: Advanced Environmental Research Institute, University of North Texas, Denton, TX USA
+output:
+  word_document:
+    reference_docx: working_docx_template.docx
+    toc: no
+    pandoc_args:
+      - '--lua-filter=scholarly-metadata.lua'
+      - '--lua-filter=author-info-blocks.lua'
+      - '--filter=pandoc-crossref.exe'
+header-includes:
+- \usepackage{lineno}
+- \usepackage{amsmath}
+- \usepackage{indentfirst}
+- \usepackage{nicefrac}
+- \numberwithin{equation}
+- \linenumbers
+indent: true
+linestretch: 1
+bibliography: supp_refs.bib
+link-citations: no
+link-color: grey
+csl: ecology.csl
+---
+
+The expectation (i.e., mean) for the double-truncated Pareto distribution, defined on the interval $[a,b]$ with shape parameter $\lambda$ $\neq$ -1 is:
+$$f(m) = (\lambda + 1)(m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1})^{-1}m^{\lambda}$$ {#eq:pdf}
+The expectation, or mean, body size, $E(m)$, can then be described as:
+$$E(m) = \frac{(\lambda + 1)}{(m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1})} \cdot \frac{(m_{max}^{\lambda + 2} - m_{min}^{\lambda + 2})}{(\lambda + 2)}$$ {#eq:e(m)}
+From here we make a few simplifying assumptions to model the estimated total abundance, $N_{tot}$, mean body size, $\bar{m}$, and total biomass, $B_{tot}$ for each sample based on the estimated $\lambda$ of the community: 
+1) similar processes structure the community for body sizes below the modeled lower body size threshold $\hat{m}_{min}$ (*aka* $a$) and the lower than anticipated abundance between the biological lower body threshold, $m_{min}$, are due entirely to sampling inefficiency, not different ecological factors.
+From this we can use the estimated $\lambda$ from our truncated Pareto model in the range $[\hat{m}_{min}, \hat{m}_{max}]$ to predict the mean body size from the body size range $[m_{min}, \hat{m}_{max}]$ using equation 2 and replacing $\hat{m}_{min}$ with $m_{min}$.
+2) the sampled density observed between $[\hat{m}_{min}, \hat{m}_{max}]$ is proportional to the density of individuals in the mass range $[m_{min}, \hat{m}_{max}]$.
+From here, we can re-express the total density, $N_{tot}$, as if we wanted to calculate densities within portions of the range. Specifically, $N_{tot}$ is re-expressed as the density of individuals observed multiplied by the probability density function (eqn. 1). $N_{tot}$ represents the density of individuals over this interval $[\hat{m}_{min}, \hat{m}_{max}]$ and therefore the pdf sums to 1 by definition. We can then estimate the proportional multiplier to adjust $N_{tot}$ over the new interval $[m_{min}, \hat{m}_{max}]$ by taking the ratio of the pdfs multiplied by the observed density:
+
+$$N_{new} = N_{tot} \cdot \frac{\int_{m_{min}}^{\hat{m}_{max}}f(m)dm}{\int_{\hat{m}_{min}}^{\hat{m}_{max}}f(m)dm}$$ {#eq:N_mult}
+From these new estimates, we can also estimate the total biomass, $B_{tot}$ by multiplying our new estimate of abundance by our new estimate of the expected (mean) body size, $B_{new} = N_{new} \cdot E(m)$.
