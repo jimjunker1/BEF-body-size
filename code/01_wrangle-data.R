@@ -7,7 +7,7 @@ sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>%
   mutate(b = dw * no_m2) %>% 
   mutate(dw_mean = weighted.mean(dw, no_m2), .by = c(site_id, sample_id)) %>% 
   summarise(no_m2 = sum(no_m2),
-            b = sum(b), .by = c(site_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
+            b = sum(b), .by = c(site_id, sample_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
 
 lambdas <- readRDS(here("data/lambdas.rds"))
 
