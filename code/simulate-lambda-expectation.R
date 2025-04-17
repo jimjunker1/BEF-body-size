@@ -54,3 +54,46 @@ trunc_pareto_expectation_general <- function(alpha, a, b) {
 x_bot <- 0.006
 expected_value <- trunc_pareto_expectation_general(alpha_hat, x_bot, x_max)
 cat("Predicted expectation at x_bot =", x_bot, ":", expected_value, "\n")
+
+# parameters estimated or given:
+lambda <- -1.5  # example estimated parameter
+x_min <- 1      # original lower bound
+x_max <- 10     # upper bound
+n <- 1000       # total observed individuals
+x_min2 <- 0.5     # new lower bound
+
+# expectation function:
+trunc_pareto_mean <- function(lambda, a, b) {
+  if(lambda == -1) {
+    return((b - a) / log(b / a))
+  } else if(lambda == -2) {
+    return((a * b / (a - b)) * log(b / a))
+  } else {
+    numerator <- (lambda + 1) * (b^(lambda + 2) - a^(lambda + 2))
+    denominator <- (lambda + 2) * (b^(lambda + 1) - a^(lambda + 1))
+    return(numerator / denominator)
+  }
+}
+
+# 1) Original mean:
+mean_orig <- trunc_pareto_mean(lambda, x_min, x_max)
+
+# 2) New mean with new lower bound:
+mean_new <- trunc_pareto_mean(lambda, x_min2, x_max)
+
+# 3) Number of individuals in new mass range:
+N_new <- n * (x_max^(lambda + 1) - x_min2^(lambda + 1)) /
+  (x_max^(lambda + 1) - x_min^(lambda + 1))
+
+# 4) Biomass in new mass range:
+biomass_new <- N_new * mean_new
+
+# Results:
+cat("Original mean mass:", mean_orig, "\n")
+cat("New mean mass:", mean_new, "\n")
+cat("Estimated number of individuals in new range:", N_new, "\n")
+cat("Estimated biomass in new range:", biomass_new, "\n")
+
+
+
+
