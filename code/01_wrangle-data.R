@@ -1,6 +1,133 @@
-
 here::i_am("code/01_wrangle-data.R")
 source(here::here("code/helpers.R"))
+ 
+# get sample and site level biodiversity data
+# local directory location
+NEON_db_dir = sprintf("C:/Users/%s/OneDrive - UNT System/Projects/database-files",
+                      Sys.info()[['user']])
+
+# load the macro data
+neonstore::neon_store(
+  product = "DP1.20120.001",
+  table = "inv_taxonomyProcessed-basic",
+  dir = NEON_db_dir,
+  db = neon_db(NEON_db_dir, read_only = FALSE)
+)
+macro_load <- neon_table(
+  product = "DP1.20120.001",
+  db = neon_db(NEON_db_dir),
+  table = "inv_taxonomyProcessed-basic",
+  lazy = TRUE
+)
+
+macro <- macro_load %>%
+  select(siteID, collectDate = collectDate, scientificName, taxonID = acceptedTaxonID, estimatedTotalCount) %>%
+  collect() %>% 
+  mutate(type = 'inverts',
+         collectDate = as.Date(collectDate)) %>% 
+  summarise(estimatedTotalCount = sum(estimatedTotalCount),.by = c('siteID','collectDate','type','taxonID'))
+  
+
+# load the fish data
+neonstore::neon_store(
+  product = "DP1.20107.001",
+  table = "fsh_bulkCount-basic",
+  dir = NEON_db_dir,
+  db = neon_db(NEON_db_dir, read_only = FALSE)
+)
+
+# neon_index(
+#   product = "DP1.20107.001",
+#   dir = NEON_db_dir
+# ) %>% 
+#   slice_sample(n = 1, by = table) %>% 
+#   View()
+
+fish_load = neon_table(
+  product = "DP1.20107.001",
+  table = "fsh_bulkCount-basic",
+  db = neon_db(NEON_db_dir),
+  lazy = TRUE
+  )
+
+fish = fish_load %>% 
+  select(siteID, collectDate = passStartTime, passNumber, taxonID, bulkFishCount, actualOrEstimated) %>% 
+  collect() %>% 
+  mutate(type = 'fish',
+         collectDate = as.Date(gsub("(^\\d{4}-\\d{2}-\\d{2}) .*", "\\1", collectDate))) %>% 
+  summarise(estimatedTotalCount = sum(bulkFishCount), .by = c('siteID','collectDate','type','taxonID'))
+  
+# unique sampling date IDs for macros
+macro_id = macro %>%
+  distinct(siteID, collectDate) %>% 
+  arrange(siteID, collectDate) %>% 
+  mutate(macroID = 1:n())
+# unique sampling date IDs for fish
+fish_id = fish %>% 
+  distinct(siteID, collectDate) %>% 
+  arrange(siteID, collectDate) %>% 
+  mutate(fishID = 1:n())
+
+#
+merge_macrofish_dates = function(mDf = NULL, fDf = NULL, limit = 30,...){
+  mDf = get(mDf, envir = .GlobalEnv)
+  fDf = get(fDf, envir = .GlobalEnv)
+  
+  mList = mDf %>% named_group_split(siteID)
+  fList = fDf %>% named_group_split(siteID)
+  
+  mList = mList[names(fList)]
+  fList = fList[names(mList)]
+
+  fDateList = map2(mList, fList, ~.x$collectDate %>%  
+                                 map2(., list(.y$collectDate), \(x,y){
+                                   if(min(abs(y - x)) >= limit){
+                                     return(NA)
+                                     } else{
+                                       d = which(abs(y - x) == min(abs(y - x)))
+                                       return(unlist(d))
+                                     }
+                                   }) %>% unlist)
+  
+  mfList = pmap(list(mList,
+                     fDateList,
+                     fList), \(x,y,z){
+    df = x %>%  
+    bind_cols(fDate = z$collectDate[y]) %>% 
+    bind_cols(fishID = z$fishID[y])
+    
+    
+    return(df)
+  })
+  
+  return(mfList)
+}
+
+z = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% bind_rows()
+
+macro_merge_id = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% 
+  bind_rows() %>% filter(!is.na(fishID)) %>% 
+  select(siteID, mDate = collectDate, fDate) %>% 
+  mutate(id = 1:n()) %>% 
+  left_join(.,macro %>% 
+              select(siteID, mDate = collectDate, type, taxonID, estimatedTotalCount),
+            by = c('siteID','mDate'))
+  
+fish_merge_id = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% 
+  bind_rows() %>% filter(!is.na(fishID)) %>% 
+  select(siteID, mDate = collectDate, fDate) %>% 
+  mutate(id = 1:n()) %>%  
+  left_join(.,fish %>%
+              select(siteID, fDate = collectDate, type, taxonID, estimatedTotalCount),
+            by = c('siteID','fDate'))
+
+macro_fish_n = macro_merge_id %>% 
+  bind_rows(fish_merge_id)
+
+
+
+
+###
 
 sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>% 
   select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>% 

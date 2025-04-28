@@ -1,8 +1,9 @@
 # load packages 
-library(tidyverse)
 library(here)
 library(isdbayes)
 library(junkR)
+library(neonstore)
+library(tidyverse)
 i_am("code/helpers.R")
 ### --- helper functions ---###
 #'
