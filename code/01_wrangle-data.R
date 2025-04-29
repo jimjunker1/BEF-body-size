@@ -6,6 +6,7 @@ source(here::here("code/helpers.R"))
 NEON_db_dir = sprintf("C:/Users/%s/OneDrive - UNT System/Projects/database-files",
                       Sys.info()[['user']])
 
+### Macroinvertebrates ----
 # load the macro data
 neonstore::neon_store(
   product = "DP1.20120.001",
@@ -27,21 +28,13 @@ macro <- macro_load %>%
          collectDate = as.Date(collectDate)) %>% 
   summarise(estimatedTotalCount = sum(estimatedTotalCount),.by = c('siteID','collectDate','type','taxonID'))
   
-
+##### Fish -----
 # load the fish data
 neonstore::neon_store(
   product = "DP1.20107.001",
-  table = "fsh_bulkCount-basic",
   dir = NEON_db_dir,
   db = neon_db(NEON_db_dir, read_only = FALSE)
 )
-
-# neon_index(
-#   product = "DP1.20107.001",
-#   dir = NEON_db_dir
-# ) %>% 
-#   slice_sample(n = 1, by = table) %>% 
-#   View()
 
 fish_load = neon_table(
   product = "DP1.20107.001",
@@ -51,12 +44,61 @@ fish_load = neon_table(
   )
 
 fish = fish_load %>% 
-  select(siteID, collectDate = passStartTime, passNumber, taxonID, bulkFishCount, actualOrEstimated) %>% 
-  collect() %>% 
+  select(siteID, namedLocation, eventID, collectDate = passStartTime, passNumber, taxonID, bulkFishCount, actualOrEstimated) %>%
+  collect() #%>% 
   mutate(type = 'fish',
          collectDate = as.Date(gsub("(^\\d{4}-\\d{2}-\\d{2}) .*", "\\1", collectDate))) %>% 
   summarise(estimatedTotalCount = sum(bulkFishCount), .by = c('siteID','collectDate','type','taxonID'))
-  
+
+## stream widths load
+
+neon_store(
+  product = "DP1.20190.001",
+  table = "rea_widthFieldData",
+  dir = NEON_db_dir,
+  db = neon_db(NEON_db_dir, read_only = FALSE)
+)
+
+field_load = neon_table(
+  product = "DP1.20107.001",
+  table = "fsh_fieldData-basic",
+  db = neon_db(NEON_db_dir, read_only = FALSE),
+  lazy = TRUE
+)
+reach_load = neon_table(
+  product = "DP1.20107.001",
+  table = "fsh_perPass-basic",
+  db = neon_db(NEON_db_dir, read_only = FALSE),
+  lazy = TRUE
+  )
+
+widths_load = neon_table(
+  product = "DP1.20190.001",
+  table = "rea_widthFieldData",
+  db = neon_db(NEON_db_dir),
+  lazy = TRUE
+)
+
+## 
+reach_event = reach_load %>% 
+  select(siteID, eventID, namedLocation) %>%
+  distinct() %>%
+  collect()
+
+field_event = field_load %>% 
+  select(siteID, eventID, namedLocation, fixedRandomReach, measuredReachLength) %>% 
+  collect()
+
+widths = widths_load %>% 
+  # select(siteID, collectDate, wettedWidth) %>% 
+  collect() #%>% 
+  mutate(year = year(collectDate),
+         month = month(collectDate),
+         year_month = paste(year,month, sep = "_")) %>% 
+  group_by(siteID) %>%
+  summarize(mean_wetted_width_m = mean(wettedWidth, na.rm = T),
+            sd_wetted_width_m = sd(wettedWidth, na.rm = T))
+#### Combine fish and macros ----
 # unique sampling date IDs for macros
 macro_id = macro %>%
   distinct(siteID, collectDate) %>% 
@@ -69,41 +111,6 @@ fish_id = fish %>%
   mutate(fishID = 1:n())
 
 #
-merge_macrofish_dates = function(mDf = NULL, fDf = NULL, limit = 30,...){
-  mDf = get(mDf, envir = .GlobalEnv)
-  fDf = get(fDf, envir = .GlobalEnv)
-  
-  mList = mDf %>% named_group_split(siteID)
-  fList = fDf %>% named_group_split(siteID)
-  
-  mList = mList[names(fList)]
-  fList = fList[names(mList)]
-
-  fDateList = map2(mList, fList, ~.x$collectDate %>%  
-                                 map2(., list(.y$collectDate), \(x,y){
-                                   if(min(abs(y - x)) >= limit){
-                                     return(NA)
-                                     } else{
-                                       d = which(abs(y - x) == min(abs(y - x)))
-                                       return(unlist(d))
-                                     }
-                                   }) %>% unlist)
-  
-  mfList = pmap(list(mList,
-                     fDateList,
-                     fList), \(x,y,z){
-    df = x %>%  
-    bind_cols(fDate = z$collectDate[y]) %>% 
-    bind_cols(fishID = z$fishID[y])
-    
-    
-    return(df)
-  })
-  
-  return(mfList)
-}
-
-z = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% bind_rows()
 
 macro_merge_id = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% 
   bind_rows() %>% filter(!is.na(fishID)) %>% 
@@ -124,7 +131,13 @@ fish_merge_id = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit =
 macro_fish_n = macro_merge_id %>% 
   bind_rows(fish_merge_id)
 
+### create sample and site level biodiversity measures
 
+
+
+  
+  
+  H_dat$hill_0 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 0)
 
 
 ###

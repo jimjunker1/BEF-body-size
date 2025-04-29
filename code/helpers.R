@@ -4,6 +4,8 @@ library(isdbayes)
 library(junkR)
 library(neonstore)
 library(tidyverse)
+library(hillR)
+library(lubridate)
 i_am("code/helpers.R")
 ### --- helper functions ---###
 #'
@@ -33,3 +35,39 @@ estimate_pareto_N = function(n, lambda, xmin, xmin2, xmax){
     (xmax^(lambdaPlus) - xmin^(lambdaPlus))
 }
 
+#'
+#'
+#'
+merge_macrofish_dates = function(mDf = NULL, fDf = NULL, limit = 30,...){
+  mDf = get(mDf, envir = .GlobalEnv)
+  fDf = get(fDf, envir = .GlobalEnv)
+  
+  mList = mDf %>% named_group_split(siteID)
+  fList = fDf %>% named_group_split(siteID)
+  
+  mList = mList[names(fList)]
+  fList = fList[names(mList)]
+  
+  fDateList = map2(mList, fList, ~.x$collectDate %>%  
+                     map2(., list(.y$collectDate), \(x,y){
+                       if(min(abs(y - x)) >= limit){
+                         return(NA)
+                       } else{
+                         d = which(abs(y - x) == min(abs(y - x)))
+                         return(unlist(d))
+                       }
+                     }) %>% unlist)
+  
+  mfList = pmap(list(mList,
+                     fDateList,
+                     fList), \(x,y,z){
+                       df = x %>%  
+                         bind_cols(fDate = z$collectDate[y]) %>% 
+                         bind_cols(fishID = z$fishID[y])
+                       
+                       
+                       return(df)
+                     })
+  
+  return(mfList)
+}
