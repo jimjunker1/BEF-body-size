@@ -3,66 +3,36 @@
 # is used to estimate population size with three-pass depletion models.
 # Modeling occurs in a different script.
 
-library(neonUtilities)
-library(tidyverse)
-library(janitor)
-library(lubridate)
-library(tidybayes)
-library(brms)
-library(neonstore)
+# stack data
+if(update){
+  neonstore::neon_store(
+    product = "DP1.20107.001",
+    dir = NEON_db_dir 
+  )
+  neon_store(
+    product = "DP1.20190.001",
+    table = "rea_widthFieldData",
+    dir = NEON_db_dir,
+    db = neon_db(NEON_db_dir, read_only = FALSE)
+  )  
 
-# directory
-Sys.setenv(NEONSTORE_HOME = paste(getwd(),
-                                  "/data",
-                                  sep=""))
 
-# download data (takes ~15 minutes) --------------------------------
-#stream sites
-streamsites=c("HOPB", "LEWI", "POSE", "CUPE",
-              "GUIL", "KING", "MCDI", "LECO",
-              "WALK", "MAYF", "ARIK", "BLUE",
-              "PRIN", "BLDE", "COMO", "WLOU",
-              "SYCA", "REDB", "MART", "MCRA",
-              "BIGC", "TECR", "OKSR", "CARI")
-
-neon_download(product="DP1.20107.001",
-              start_date=NA,
-              end_date=NA,
-              type="basic",
-              site= NA)
-
-neon_download(product="DP1.20190.001",
-              start_date=NA,
-              end_date=NA,
-              table = "rea_widthFieldData",
-              type="basic",
-              site= streamsites)
-
-# # add a variables file. Just need one overall file. Any site will do. I've chosen ARIK b/c it's first in alphabet.
-neon_download(product="DP1.20190.001", 
-              start_date="2021-01-01", 
-              end_date="2022-01-01",
-              table = "variables",
-              type="basic",
-              site= "ARIK")
-
-# # stack data
-fish_stacked = stackFromStore(filepaths=neon_dir(),
+fish_stacked = stackFromStore(filepaths=NEON_db_dir,
                       dpID="DP1.20107.001",
                       package="basic",
                       site = streamsites)
 
-stream_widths_stacked = stackFromStore(filepaths=neon_dir(),
+stream_widths_stacked = stackFromStore(filepaths=NEON_db_dir,
                                dpID="DP1.20190.001",
                                package="basic",
                                site = streamsites)
 
-saveRDS(fish_stacked, file = "data/fish_stacked.rds")
-saveRDS(stream_widths_stacked, file = "data/stream_widths_stacked.rds")
-
+saveRDS(fish_stacked, file = here("data/fish_stacked.rds"))
+saveRDS(stream_widths_stacked, file = here("data/stream_widths_stacked.rds"))
+}
 
 # get reach lengths and widths --------------------------------------------
-stream_widths_stacked = readRDS("data/stream_widths_stacked.rds")
+stream_widths_stacked = readRDS(here("data/stream_widths_stacked.rds"))
 
 # mean wetted width. Combine with reach lengths to get sampling area later.
 mean_wetted_width = stream_widths_stacked$rea_widthFieldData %>%
@@ -75,29 +45,29 @@ mean_wetted_width = stream_widths_stacked$rea_widthFieldData %>%
   summarize(mean_wetted_width_m = mean(wetted_width, na.rm = T),
             sd_wetted_width_m = sd(wetted_width, na.rm = T))
 
-saveRDS(mean_wetted_width, file = "data/mean_wetted_width.rds")
+saveRDS(mean_wetted_width, file = here("data/mean_wetted_width.rds"))
 
 # TOTAL POPULATION wrangle data ------------------
-fish <- readRDS("data/fish_stacked.rds")
+fish <- readRDS(here("data/fish_stacked.rds"))
 
 # 1) get reachids, eventids
 reach_event = fish$fsh_perPass %>%
-  select(reachID, eventID) %>%
+  select(namedLocation, eventID) %>%
   distinct()  %>% # removes duplicates. JSW confirmed that these were true duplicates on 2023-03-01
   clean_names()
 
 # 2) get info on whether reaches are fixed or random. Only fixed reaches have 3 pass removal. Random reaches are all single pass
 fixed_random_reach = fish$fsh_fieldData %>%
-  distinct(reachID, fixedRandomReach) %>%
-  filter(reachID != "WALK.20170316.07" | fixedRandomReach != "fixed") %>% # fix this typo. Confirmed by email with NEON on 2023-03-01
+  distinct(namedLocation, fixedRandomReach) %>%
+  filter(fixedRandomReach == "fixed") %>% # fix this typo. Confirmed by email with NEON on 2023-03-01
   clean_names()
 
 # 3) get reach lengths
 fish_reach_length = fish$fsh_fieldData %>%
   clean_names() %>% glimpse() %>% 
   mutate(collect_date = start_date) %>% 
-  distinct(reach_id, measured_reach_length, collect_date, site_id) %>%
-  group_by(collect_date, site_id, reach_id) %>%
+  distinct(named_location, event_id, measured_reach_length, collect_date, site_id) %>%
+  group_by(collect_date, site_id, named_location) %>%
   add_tally() %>%
   filter(n == 1)   # filters duplicate reach lengths
 
@@ -110,7 +80,7 @@ fish_measures = fish$fsh_perFish %>%
   mutate(collect_date = ymd(as.Date(pass_start_time)))%>% 
   left_join(reach_event) %>%
   rename(pass = pass_number) %>% 
-  group_by(site_id, collect_date, reach_id, pass, event_id, named_location) %>%
+  group_by(site_id, collect_date, pass, event_id, named_location) %>%
   tally()
 
 # 5) all fish after the first 50 are bulk counted. Those values are here.
@@ -120,7 +90,7 @@ fish_bulk = fish$fsh_bulkCount %>%
     mutate(collect_date = ymd(as.Date(pass_start_time))) %>% 
     left_join(reach_event) %>%
     rename(pass = pass_number) %>%
-  mutate(n = as.integer(parse_number(bulk_fish_count))) %>% 
+  mutate(n = as.integer(bulk_fish_count)) %>% 
   select(-pass_start_time)
 
 # 6) combine the 1st 50 fish with the bulk counts to get a total number of fish per pass.
@@ -128,7 +98,7 @@ fish_bulk = fish$fsh_bulkCount %>%
 
 three_pass_data = bind_rows(fish_bulk, fish_measures) %>%
   as_tibble() %>% glimpse() %>% 
-  group_by(reach_id, pass, event_id, collect_date, named_location, site_id) %>%
+  group_by(pass, event_id, collect_date, named_location, site_id) %>%
   summarize(total_fish = sum(n, na.rm = T)) %>%
   # separate(reach_id, into = c("site_id", "date", "reach"), remove = F) %>%
   mutate(month = month(collect_date),
@@ -141,18 +111,20 @@ three_pass_data = bind_rows(fish_bulk, fish_measures) %>%
 
 # 7) get reachids, eventids, and targets (i.e., passes that returned zero fish will have "N")
 true_zeros = fish$fsh_perPass %>%
-  select(reachID, targetTaxaPresent) %>%
+  select(siteID, namedLocation, passNumber, eventID, targetTaxaPresent, passStartTime) %>%
+  mutate(collect_date = ymd(as.Date(passStartTime))) %>% 
+  select(-passStartTime) %>% 
   distinct()  %>% # removes duplicates. JSW confirmed that these were true duplicates on 2023-03-01
   clean_names() %>%
   filter(target_taxa_present == "N")
 
 # 8) make wide format. Replace 0's using information in fsh_perPass$target_taxa_present
 three_pass_data_wide_total_fish = three_pass_data %>%   # restrict to fixed reaches only
-  # filter(fixed_random_reach == "fixed") %>%
-  select(-event_id) %>%
-  group_by(reach_id, site_id, collect_date, pass, month, year, year_month, measured_reach_length, n, 
-           mean_wetted_width_m, sd_wetted_width_m, fixed_random_reach,
-           named_location) %>% 
+  filter(fixed_random_reach == "fixed") %>%
+  # select(-event_id) %>%
+  group_by(named_location, site_id, collect_date, pass, month, year, year_month, measured_reach_length, n, 
+           mean_wetted_width_m, sd_wetted_width_m, fixed_random_reach
+           ) %>% 
   reframe(total_fish = sum(total_fish)) %>% 
   pivot_wider(names_from = pass, values_from = total_fish) %>% # four events have the 3rd pass entered in two numbers. This totals them so we can pivot.
   ungroup() %>%
@@ -169,17 +141,9 @@ three_pass_data_wide_total_fish = three_pass_data %>%   # restrict to fixed reac
   filter(`1` < 1e9) %>% # filter out false zeros
   filter(`2` < 1e9) %>%
   filter(`3` < 1e9) %>%
-  mutate(site_int = as.factor(row_number()), #sample identifier
-         increased = case_when(`3` > `1` ~ "no depletion",
+  mutate(increased = case_when(`3` > `1` ~ "no depletion",
                                TRUE ~ "depletion")) %>% 
-  filter(!is.na(collect_date))
+  mutate(site_int = as.factor(row_number())) #%>%  #sample identifier
+  # filter(!is.na(collect_date))
 
-write_csv(three_pass_data_wide_total_fish, file = "data/three_pass_data_wide_total_fish.csv")
-
-
-
-
-
-
-
-
+write_csv(three_pass_data_wide_total_fish, file = here("data/three_pass_data_wide_total_fish.csv"))

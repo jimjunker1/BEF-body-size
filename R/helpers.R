@@ -2,11 +2,73 @@
 library(here)
 library(isdbayes)
 library(junkR)
+library(neonUtilities)
 library(neonstore)
 library(tidyverse)
 library(hillR)
+library(janitor)
 library(lubridate)
-i_am("code/helpers.R")
+library(tidybayes)
+library(brms)
+library(ubms)
+i_am("R/helpers.R")
+
+# directory
+NEON_db_dir = sprintf("C:/Users/%s/OneDrive - UNT System/Projects/database-files",
+                      Sys.info()[['user']])
+
+# stream sites
+streamsites=c("HOPB", "LEWI", "POSE", "CUPE",
+              "GUIL", "KING", "MCDI", "LECO",
+              "WALK", "MAYF", "ARIK", "BLUE",
+              "PRIN", "BLDE", "COMO", "WLOU",
+              "SYCA", "REDB", "MART", "MCRA",
+              "BIGC", "TECR", "OKSR", "CARI")
+
+if(!update){
+  date_updated = readRDS(here("data/date_updated.rds"))
+  cat(paste0("Data was last updated on ",date_updated))
+} else{
+  # macroinvertebrates
+  neonstore::neon_download(
+    product = "DP1.20120.001",
+    site = streamsites,
+    type ="basic",
+    dir = NEON_db_dir,
+    .token = Sys.getenv("NEON_TOKEN")
+  )
+  # fish 
+  neonstore::neon_download(
+    product = "DP1.20107.001",
+    site = streamsites,
+    type = "basic",
+    dir = NEON_db_dir ,
+    .token = Sys.getenv("NEON_TOKEN")
+  )
+  # stream widths
+  neonstore::neon_download(
+    product = "DP1.20190.001",
+    site = streamsites,
+    type = "basic",
+    dir = NEON_db_dir ,
+    .token = Sys.getenv("NEON_TOKEN")
+  )
+  # variables
+  neonstore::neon_download(
+    product="DP1.20190.001",
+    start_date="2021-01-01", 
+    end_date="2022-01-01",
+    table = "variables",
+    type="basic",
+    site= "ARIK",
+    dir = NEON_db_dir ,
+    .token = Sys.getenv("NEON_TOKEN")
+  )
+  
+  saveRDS(Sys.Date(), here("data/date_updated.rds"))
+  date_updated = readRDS(here("data/date_updated.rds"))
+  cat(paste0("Data was last updated on ",date_updated))
+}
 ### --- helper functions ---###
 #'
 #'

@@ -10,7 +10,7 @@ fish_density = readRDS(file = "data/fish_density.rds") %>% as_tibble()
 site_ints = fish_density %>% ungroup %>% distinct(site_int, siteID, domainID, namedLocation, eventID, boutEndDate)
 
 # 2) load fish sizes. Add collection ids
-fsh_perFish = read_csv("data/neon_fish_prerelease/data_for_JW/fsh_perFish.csv") %>%  # sizes
+fsh_perFish = read_csv(here("data/neon_fish_prerelease/data_for_JW/fsh_perFish.csv")) %>%  # sizes
   left_join(site_ints) %>% 
   filter(!is.na(site_int))
 
