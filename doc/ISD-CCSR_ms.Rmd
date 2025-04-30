@@ -73,71 +73,72 @@ options(mc.cores = parallel::detectCores(),
 rstan::rstan_options(auto_write = TRUE)
 # read in the data for species richness across sites
 
-s_dat_tot = readRDS(here("data/macro_dw_sizebytaxa.rds")) %>% 
-  select(site_id = siteID, taxonID = acceptedTaxonID, no_m2) %>%
-  named_group_split(site_id) %>% 
-  purrr::map(~.x %>% pivot_wider(-site_id, names_from = taxonID, values_from = no_m2, values_fn = sum) %>% unlist %>% round %>% .[.>0] %>% na.omit %>%  estimateR(.)) %>% 
-  bind_rows(.id = 'site_id') %>% 
-  select(site_id, S.obs)
+taxa_list = readRDS(here('data/taxa_list.rds'))
+H_dat = readRDS(here('data/macro_fish_diversity.rds'))
 
-H_dat = readRDS(here("data/macro_dw_sizebytaxa.rds")) %>% 
-  select(site_id = siteID, collectDate, taxonID = acceptedTaxonID, no_m2) %>% 
-  mutate(collectDate = as.Date(collectDate)) %>% 
-  summarise(no_m2 = sum(no_m2), .by = c(site_id, collectDate, taxonID)) %>% 
-  # named_group_split(site_id) %>% 
-  pivot_wider(id_cols = c(site_id, collectDate), names_from = taxonID, values_from = no_m2, values_fill = 0)
-
-H_dat$hill_0 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 0)
-H_dat$hill_1 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 1)
-H_dat$hill_2 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 2)
-
-# range(s_dat$S.obs);(390-124)/124
+H_summ = H_dat %>% 
+  summarise(S_obs_inc = mean(Species),
+            S_chao_inc = mean(chao),
+            S_jack1_inc = mean(jack1),
+            S_jack2_inc = mean(jack2),
+            S_boot_inc = mean(boot),
+            S_obs_rar = mean(S.obs),
+            S_chao1_rar = mean(S.chao1),
+            S_ACE_rar = mean(S.ACE, na.rm = TRUE),
+            hill_0 = mean(hill_0),
+            hill_1 = mean(hill_1),
+            hill_2 = mean(hill_2),
+            .by = c('site_int','site_id')
+            ) %>% 
+  mutate(across(where(is.numeric), round))
 
 # read in data and calc sample level summaries
 dw_dat = readRDS(here("data/dat_fish_inverts_dw_allyears.rds")) %>% 
-  group_by(site_id, collectDate = macro_julian, sample_id) %>% 
-  mutate(collectDate = as.Date(collectDate),
+  rename(collect_date = date) %>% 
+  mutate(collect_date = as.Date(collect_date),
+         year = year(collect_date),
+         month = month(collect_date),
+         year_month = paste(year, month, sep = "_"),
          n_sum = sum(no_m2),
          n_rel = no_m2/n_sum,
          b_m2 = no_m2*dw,
          b_sum = sum(b_m2),
-         b_rel = b_m2/b_sum)
+         b_rel = b_m2/b_sum,
+         .by = c('site_id', 'sample_int','collect_date'))
 
 # get weighted mean body size
 dw_dat_summ = dw_dat %>% 
   ungroup %>% 
   mutate(dw_met = dw^0.75) %>%
-  group_by(site_id, collectDate, sample_id) %>% 
   summarise(n_tot = sum(n_sum),
-            ln_tot = log10(n_tot),
+            ln_tot = log(n_tot),
             mbar_n_met = weighted.mean(dw_met, w = n_rel),
             mbar_b_met = weighted.mean(dw_met, w = b_rel),
             mbar_n = weighted.mean(dw, w = n_rel),
             mbar_b = weighted.mean(dw, w = b_rel),
-            lmbar_n_met = log10(mbar_n_met),
-            lmbar_b_met = log10(mbar_b_met),
-            lmbar_n = log10(mbar_n),
-            lmbar_b = log10(mbar_b),
+            lmbar_n_met = log(mbar_n_met),
+            lmbar_b_met = log(mbar_b_met),
+            lmbar_n = log(mbar_n),
+            lmbar_b = log(mbar_b),
             b_m2 = unique(b_sum),
-            lb_m2 = log10(b_m2),
-            m_max = max(dw, na.rm = TRUE)) %>% 
-  ungroup %>% 
+            lb_m2 = log(b_m2),
+            m_max = max(dw, na.rm = TRUE),
+            .by = c('site_id','sample_int','year_month')) %>% 
   mutate(across(all_of(c("ln_tot", "lmbar_n_met", "lmbar_b_met", "lmbar_n", "lmbar_b")), ~as.numeric(scale(.)), .names  = "{.col}_s"))%>% 
   left_join(dw_dat %>% ungroup %>% select(site_id, gpp, log_gpp_s, log_om_s, mat_s) %>% distinct(), by = 'site_id')
 
 # read in lambdas by sample_id
 lambdas = read_csv(here("data/post_sample_lambdas.csv")) %>% 
-  select(sample_id, lambda_med = '.epred', lower_lambda = '.lower', upper_lambda = '.upper') 
+  select(sample_int = sample_id, lambda_med = '.epred', lower_lambda = '.lower', upper_lambda = '.upper') 
 
-dw_dat_summ = merge(dw_dat_summ, lambdas, by = 'sample_id', all = TRUE) %>% 
-  left_join(s_dat_tot, by = "site_id") %>% 
-  left_join(H_dat %>% select(site_id, collectDate, hill_0, hill_1, hill_2) %>% summarise(across(matches("hill"), mean), .by = site_id), by ='site_id')
+dw_dat_summ = merge(dw_dat_summ, lambdas, by = 'sample_int', all = TRUE) %>% 
+  left_join(H_summ, by ='site_id')
 
 rm("lambdas", "dw_dat") 
 ```
 
 ```{r richness models}
-output = capture.output(brm(bf(lb_m2 ~ hill_0),# + (1|site_id)),
+output = capture.output(brm(bf(lb_m2 ~ log(hill_0)),# + (1|site_id)),
                         data = dw_dat_summ,
                         family = gaussian(link = 'identity'),
                         iter = 1000,
@@ -152,27 +153,39 @@ output = capture.output(brm(bf(lb_m2 ~ hill_0),# + (1|site_id)),
 b_s_lm = readRDS(here("data/models/b_s.rds"))
 b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
 b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
-b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0 = S.obs))
+b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
+
 
 b_s_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
-            hill_0 = S.obs) %>% 
+            hill_0 = hill_0) %>% 
   add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA)#~(1|site_id))
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2)), round(max(dw_dat_summ$lb_m2)), by = 2)
-b_labels = format(10^b_range, scientific = TRUE)
+b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
+# S_breaks = seq.int(round(min(log(dw_dat_summ$hill_0))), round(max(log(dw_dat_summ$hill_0))), by = 0.25)
+S_breaks = log(c(50, 75, 100, 125, 150))
+S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
+text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
 
 b_s_pred_plot = b_s_pred %>% 
   ggplot()+
-  geom_path(aes(x = hill_0, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
-  geom_point(data = dw_dat_summ, aes(x = S.obs, y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5)+
-  scale_x_continuous(name = "Species richness")+
-  scale_y_continuous(name = expression(log[10]*"(Biomass)[ g"~m^-2*")"),
-                     limits = c(2,6),
-                     breaks = b_breaks#,
-                     # labels = b_labels
-                     )+
+  geom_path(aes(x = log(hill_0), y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dw_dat_summ, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5, position = position_jitter(width = 0.02))+
+  geom_point(data = dw_dat_summ %>% summarise(hill_0 = unique(hill_0),
+                                              lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
+             aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
+  scale_x_continuous(name = "Species richness",
+                     breaks = S_breaks,
+                     labels = S_labels,
+                     limits = c(3.9,5))+
+  scale_y_continuous(name = expression("Biomass (g"~m^-2*")"),
+                     limits = c(5,13),
+                     breaks = b_breaks,
+                    labels = b_labels
+  )+
   scale_fill_viridis(discrete = TRUE)+
+  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = text_annotation )+
   theme(legend.position = 'none');b_s_pred_plot
 
 

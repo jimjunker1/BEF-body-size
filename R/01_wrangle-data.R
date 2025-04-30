@@ -382,6 +382,7 @@ H_dat$hill_1 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 1)
 H_dat$hill_2 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 2)
 
 saveRDS(H_dat, here('data/macro_fish_diversity.rds'))
+saveRDS(taxa_list, here('data/taxa_list.rds'))
 } else{
   H_dat = readRDS(here('data/macro_fish_diversity.rds'))
 
