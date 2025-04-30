@@ -1,14 +1,15 @@
 
 here::i_am("R/01_wrangle-data.R")
 ## The last time the data stores where updated
-cat("Data stores were updated",as.character(readRDS(here("data/date_updated.rds"))))
+cat("Data stores were updated",as.character(readRDS(here::here("data/date_updated.rds"))))
 ## should we update all of the data stores?
 update = FALSE
+rerun = TRUE
 source(here::here("R/helpers.R"))
  
 # get sample and site level biodiversity data
 #### Start with fish to adjust abundances
-if(update){
+if(rerun){
 # 1) load the stores
 ## fish
 neonstore::neon_store(
@@ -115,11 +116,15 @@ fish_measures = fish_ind_load %>%
   tally()
 
 fish_measure_taxa = fish_ind_load %>%
-  select(eventID, taxonID, passStartTime, siteID, namedLocation) %>%
+  select(siteID, eventID, passStartTime, namedLocation, taxonID) %>%
   collect() %>% 
   clean_names() %>%
-  mutate(collect_date = ymd(as.Date(pass_start_time))) %>% 
-  summarise()
+  mutate(collect_date = ymd(as.Date(pass_start_time)),
+         month = month(collect_date),
+         year = year(collect_date),
+         year_month = paste(year, month, sep = "_")) %>% 
+  select(-pass_start_time) %>% 
+  summarise(count = n(),.by = c('site_id','event_id','taxon_id','year_month'))
 
 # wrangle bulk counts
 fish_count_load = neon_table(
@@ -140,10 +145,14 @@ fish_bulk = fish_count_load %>%
   select(-pass_start_time)
 
 fish_bulk_taxa = fish_count_load %>%
-  select(eventID, taxonID, bulkFishCount, passStartTime, passNumber, siteID, namedLocation)  %>%
+  select(siteID, namedLocation, eventID, taxonID, bulkFishCount, passStartTime)  %>%
   collect() %>% 
   clean_names() %>%
-  mutate(collect_date = ymd(as.Date(pass_start_time)))
+  mutate(collect_date = ymd(as.Date(pass_start_time)),
+         month = month(collect_date),
+         year = year(collect_date),
+         year_month = paste(year, month, sep = "_")) %>% 
+  summarise(count = sum(bulk_fish_count), .by = c('site_id','event_id','taxon_id','year_month'))
 
 # bring it all together
 # combine the 1st 50 fish with the bulk counts to get a total number of fish per pass.
@@ -222,9 +231,7 @@ three_pass_model = stan_multinomPois(
 
 saveRDS(three_pass_model, file = here("data/models/three_pass_model.rds"))
 
-
-
-three_pass_population = as_draws_df(fish_fit@stanfit) %>% 
+three_pass_population = as_draws_df(three_pass_model@stanfit) %>% 
   select(contains("_state")) %>% 
   pivot_longer(cols = contains("site_int")) %>% 
   clean_names() %>% 
@@ -237,18 +244,43 @@ three_pass_population = as_draws_df(fish_fit@stanfit) %>%
   select(-.width, -.point, -.interval) %>% 
   rename(.lower_threepass = .lower,
          .upper_threepass = .upper) %>% #get original group names
-  left_join(three_pass_df %>% ungroup %>% 
+  left_join(three_pass_data_wide %>% ungroup %>% 
               mutate(site_int = as.factor(site_int))) %>% 
   mutate(area_m2 = measured_reach_length * mean_wetted_width_m,
          no_fish_per_m2 = pop_threepass/area_m2,
          no_fish_per_m2_lower = .lower_threepass/area_m2,
          no_fish_per_m2_upper = .upper_threepass/area_m2,
-         raw_total_per_m2 = total_fish/area_m2)
-}
+         raw_total_per_m2 = total_fish/area_m2) 
 
+fish_count_taxa = fish_measure_taxa %>% 
+  left_join(fish_bulk_taxa, by = c('site_id','event_id','taxon_id','year_month')) %>% 
+  mutate(count = sum(across(matches('count.')), na.rm = TRUE),.by = c('site_id','event_id','taxon_id','year_month')) %>% 
+  select(-count.x, -count.y) %>% 
+  mutate(rel_n = count/sum(count), .by = c('site_id','event_id','year_month')) %>% 
+  left_join(three_pass_population %>% 
+              filter(!is.na(area_m2)) %>% 
+              select(site_id, year_month, no_fish_per_m2, no_fish_per_m2_lower,
+                     no_fish_per_m2_upper, raw_total_per_m2, area_m2) %>% 
+              summarise(no_fish_per_m2 = mean(no_fish_per_m2),
+                        no_fish_per_m2_lower = mean(no_fish_per_m2_lower),
+                        no_fish_per_m2_upper = mean(no_fish_per_m2_upper),
+                        raw_no_fish_per_m2 = mean(raw_total_per_m2),
+                        area_m2 = sum(area_m2),
+                        .by = c('site_id','year_month')),
+            by = c('site_id','year_month')) %>% 
+  mutate(no_fish_per_m2 = no_fish_per_m2 * rel_n,
+         no_fish_per_m2_lower = no_fish_per_m2_lower * rel_n,
+         no_fish_per_m2_upper = no_fish_per_m2_upper * rel_n)
+
+saveRDS(fish_count_taxa, here('data/fish_count_taxa.rds'))
+
+} else{
+  fish_count_taxa = readRDS(here('data/fish_count_taxa.rds'))
+}
 
 ### Macroinvertebrates ----
 # load the macro data
+if(rerun){
 neonstore::neon_store(
   product = "DP1.20120.001",
   table = "inv_taxonomyProcessed-basic",
@@ -262,123 +294,114 @@ macro_load <- neon_table(
   lazy = TRUE
 )
 
-macro <- macro_load %>%
+macro_count_taxa <- macro_load %>%
   select(siteID, collectDate = collectDate, scientificName, taxonID = acceptedTaxonID, estimatedTotalCount) %>%
   collect() %>% 
   clean_names() %>% 
-  mutate(type = 'inverts',
-         collect_date = as.Date(collect_date)) %>% 
-  summarise(estimated_total_count = sum(estimated_total_count),
-            .by = c('site_id','collect_date','type','taxon_id')
+  filter(!is.na(estimated_total_count),
+         !is.na(taxon_id)) %>% 
+  mutate(collect_date = as.Date(collect_date),
+         month = month(collect_date),
+         year = year(collect_date),
+         year_month = paste(year, month, sep= "_")) %>% 
+  summarise(count = sum(estimated_total_count, na.rm = TRUE),
+            .by = c('site_id','year_month','taxon_id')
             )
+macro_site_year = macro_count_taxa %>%
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>%
+  select(site_year) %>% unlist %>% unique
+
+fish_site_year = fish_count_taxa %>% 
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
+  select(site_year) %>% unlist %>% unique
+
+common_site_year = intersect(macro_site_year, fish_site_year)
+
+fish_count_taxa =fish_count_taxa %>% 
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
+  filter(site_year %in% common_site_year) %>% 
+  select(-site_year) %>% 
+  filter(!is.na(no_fish_per_m2))
+
+macro_count_taxa = macro_count_taxa %>% 
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
+  filter(site_year %in% common_site_year) %>% 
+  select(-site_year) %>% 
+  filter(!is.na(count))
+
+macro_fish_count_taxa = macro_count_taxa %>% 
+  rename(count_m2 = count) %>% 
+  bind_rows(fish_count_taxa %>%
+              select(site_id, year_month, taxon_id, count_m2 = no_fish_per_m2)) %>%
+  left_join(macro_count_taxa %>% distinct(site_id, year_month) %>% mutate(sample_int = 1:n()), by = c('site_id','year_month')) %>% 
+  left_join(macro_count_taxa %>% distinct(site_id) %>% arrange(site_id) %>%  mutate(site_int = 1:n()), by = c('site_id'))
+
+saveRDS(macro_fish_count_taxa, here("data/macro_fish_count_taxa.rds"))
+} else{
+  macro_fish_count_taxa = readRDS(here("data/macro_fish_count_taxa.rds"))
+}
+
+## create sample and site level biodiversity measures
+max(macro_fish_count_taxa$sample_int)
+if(rerun){
+# create a species list to isolate wide format actions
+taxa_list = macro_fish_count_taxa %>% 
+  select(taxon_id) %>% 
+  unlist %>% unique
   
-##### Fish -----
-# load the fish data
-neonstore::neon_store(
-  product = "DP1.20107.001",
-  dir = NEON_db_dir,
-  db = neon_db(NEON_db_dir, read_only = FALSE)
-)
+macro_fish_count_wide = macro_fish_count_taxa %>% 
+  ungroup %>% 
+  pivot_wider(id_cols = c(site_int, site_id, sample_int, year_month),
+              names_from = taxon_id, values_from = count_m2,
+              values_fn = sum, values_fill = 0)
 
-fish_load = neon_table(
-  product = "DP1.20107.001",
-  table = "fsh_bulkCount-basic",
-  db = neon_db(NEON_db_dir),
-  lazy = TRUE
-  )
+macro_fish_density_wide = macro_fish_count_taxa %>% 
+  ungroup %>% 
+  mutate(den = round(count_m2 * (1/min(count_m2))),
+         .by = c('site_int','site_id','sample_int','year_month')) %>% 
+  pivot_wider(id_cols = c(site_int, site_id, sample_int, year_month),
+              names_from = taxon_id, values_from = den,
+              values_fn = sum, values_fill = 0)
 
-fish = fish_load %>% 
-  select(siteID, namedLocation, eventID, collectDate = passStartTime, passNumber, taxonID, bulkFishCount, actualOrEstimated) %>%
-  collect() %>% 
-  mutate(type = 'fish',
-         collectDate = as.Date(gsub("(^\\d{4}-\\d{2}-\\d{2}) .*", "\\1", collectDate))) %>% 
-  summarise(estimatedTotalCount = sum(bulkFishCount), .by = c('siteID','collectDate','type','taxonID'))
+# Species biodiversity data sets
+H_dat = macro_fish_count_wide
+H_dat = H_dat %>% left_join(
+  H_dat %>% distinct(site_int, site_id) %>% bind_cols(
+    specpool(H_dat %>%
+               select(all_of(taxa_list)),
+             pool = H_dat %>% select(site_int) %>% unlist,
+             smallsample = TRUE)
+    ), by = c('site_int','site_id')) %>% 
+  left_join(H_dat %>% select(site_int, site_id, sample_int, year_month) %>% bind_cols(
+    macro_fish_density_wide %>% select(all_of(taxa_list)) %>% 
+      apply(., 1, estimateR) %>% t
+  ), by = c('site_int','site_id','sample_int','year_month')
+  ) 
+H_dat$hill_0 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 0)
+H_dat$hill_1 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 1)
+H_dat$hill_2 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 2)
 
-## stream widths load
+saveRDS(H_dat, here('data/macro_fish_diversity.rds'))
+} else{
+  H_dat = readRDS(here('data/macro_fish_diversity.rds'))
 
+  H_summ = H_dat %>% 
+    summarise(S_obs_inc = mean(Species),
+              S_chao_inc = mean(chao),
+              S_jack1_inc = mean(jack1),
+              S_jack2_inc = mean(jack2),
+              S_boot_inc = mean(boot),
+              S_obs_rar = mean(S.obs),
+              S_chao1_rar = mean(S.chao1),
+              S_ACE_rar = mean(S.ACE, na.rm = TRUE),
+              hill_0 = mean(hill_0),
+              hill_1 = mean(hill_1),
+              hill_2 = mean(hill_2),
+              .by = c('site_int','site_id')
+              ) %>% 
+    mutate(across(where(is.numeric), round))
 
-
-field_load = neon_table(
-  product = "DP1.20107.001",
-  table = "fsh_fieldData-basic",
-  db = neon_db(NEON_db_dir, read_only = FALSE),
-  lazy = TRUE
-)
-reach_load = neon_table(
-  product = "DP1.20107.001",
-  table = "fsh_perPass-basic",
-  db = neon_db(NEON_db_dir, read_only = FALSE),
-  lazy = TRUE
-  )
-
-widths_load = neon_table(
-  product = "DP1.20190.001",
-  table = "rea_widthFieldData",
-  db = neon_db(NEON_db_dir),
-  lazy = TRUE
-)
-
-## 
-reach_event = reach_load %>% 
-  select(siteID, eventID, namedLocation) %>%
-  distinct() %>%
-  collect()
-
-field_event = field_load %>% 
-  select(siteID, eventID, namedLocation, fixedRandomReach, measuredReachLength) %>% 
-  collect()
-
-widths = widths_load %>% 
-  # select(siteID, collectDate, wettedWidth) %>% 
-  collect() #%>% 
-  mutate(year = year(collectDate),
-         month = month(collectDate),
-         year_month = paste(year,month, sep = "_")) %>% 
-  group_by(siteID) %>%
-  summarize(mean_wetted_width_m = mean(wettedWidth, na.rm = T),
-            sd_wetted_width_m = sd(wettedWidth, na.rm = T))
-#### Combine fish and macros ----
-# unique sampling date IDs for macros
-macro_id = macro %>%
-  distinct(siteID, collectDate) %>% 
-  arrange(siteID, collectDate) %>% 
-  mutate(macroID = 1:n())
-# unique sampling date IDs for fish
-fish_id = fish %>% 
-  distinct(siteID, collectDate) %>% 
-  arrange(siteID, collectDate) %>% 
-  mutate(fishID = 1:n())
-
-#
-
-macro_merge_id = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% 
-  bind_rows() %>% filter(!is.na(fishID)) %>% 
-  select(siteID, mDate = collectDate, fDate) %>% 
-  mutate(id = 1:n()) %>% 
-  left_join(.,macro %>% 
-              select(siteID, mDate = collectDate, type, taxonID, estimatedTotalCount),
-            by = c('siteID','mDate'))
-  
-fish_merge_id = merge_macrofish_dates(mDf = "macro_id", fDf = "fish_id", limit = 30) %>% 
-  bind_rows() %>% filter(!is.na(fishID)) %>% 
-  select(siteID, mDate = collectDate, fDate) %>% 
-  mutate(id = 1:n()) %>%  
-  left_join(.,fish %>%
-              select(siteID, fDate = collectDate, type, taxonID, estimatedTotalCount),
-            by = c('siteID','fDate'))
-
-macro_fish_n = macro_merge_id %>% 
-  bind_rows(fish_merge_id)
-
-### create sample and site level biodiversity measures
-
-
-
-  
-  
-  H_dat$hill_0 = hill_taxa(H_dat %>% select(-c(site_id, collectDate)), q = 0)
-
-
+}
 ###
 
 sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>% 

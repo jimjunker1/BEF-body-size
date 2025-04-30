@@ -11,6 +11,7 @@ library(lubridate)
 library(tidybayes)
 library(brms)
 library(ubms)
+library(vegan)
 i_am("R/helpers.R")
 
 # directory

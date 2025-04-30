@@ -157,7 +157,7 @@ b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0 =
 b_s_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
             hill_0 = S.obs) %>% 
-  # add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA) ~(1|site_id))
+  add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA)#~(1|site_id))
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2)), round(max(dw_dat_summ$lb_m2)), by = 2)
 b_labels = format(10^b_range, scientific = TRUE)
