@@ -4,7 +4,7 @@ here::i_am("R/01_wrangle-data.R")
 cat("Data stores were updated",as.character(readRDS(here::here("data/date_updated.rds"))))
 ## should we update all of the data stores?
 update = FALSE
-rerun = FALSE
+rerun = TRUE
 source(here::here("R/helpers.R"))
  
 # get sample and site level biodiversity data
@@ -309,6 +309,7 @@ macro_count_taxa <- macro_load %>%
             )
 
 # vector of samples for lambdas
+dat_2022_clauset = readRDS(here('data/dat_2022_clauset.rds')) 
 sample_site_year_vec = dat_2022_clauset %>% 
   ungroup %>% 
   select(site_id, sample_id, collect_date) %>% 
@@ -343,18 +344,35 @@ fish_site_year_vec = fish_count_taxa %>%
 
 fish_samples = intersect(fish_site_year_vec, sample_site_year_vec)
 
-
-fish_count_taxa =fish_count_taxa %>% 
+fish_count_taxa_samples =fish_count_taxa %>% 
   mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
   filter(site_year %in% fish_samples) %>% 
   left_join(sample_site_year_df, by = c('site_id','site_year')) %>% 
   select(-site_year) %>% 
   filter(!is.na(no_fish_per_m2))
 
-macro_count_taxa = macro_count_taxa %>% 
+macro_count_taxa_samples = macro_count_taxa %>% 
   mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
   filter(site_year %in% macro_samples) %>% 
   left_join(sample_site_year_df, by = c('site_id','site_year')) %>% 
+  select(-site_year) %>% 
+  filter(!is.na(count))
+
+macro_fish_count_taxa_samples = macro_count_taxa_samples %>% 
+  rename(count_m2 = count) %>% 
+  bind_rows(fish_count_taxa_samples %>%
+              select(site_id, year_month, taxon_id, count_m2 = no_fish_per_m2))
+
+common_site_year = intersect(macro_site_year_vec, fish_site_year_vec)
+fish_count_taxa =fish_count_taxa %>% 
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
+  filter(site_year %in% common_site_year) %>% 
+  select(-site_year) %>% 
+  filter(!is.na(no_fish_per_m2))
+
+macro_count_taxa = macro_count_taxa %>% 
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
+  filter(site_year %in% common_site_year) %>% 
   select(-site_year) %>% 
   filter(!is.na(count))
 
@@ -363,35 +381,36 @@ macro_fish_count_taxa = macro_count_taxa %>%
   bind_rows(fish_count_taxa %>%
               select(site_id, year_month, taxon_id, count_m2 = no_fish_per_m2))
 
+
 saveRDS(macro_fish_count_taxa, here("data/macro_fish_count_taxa.rds"))
+saveRDS(macro_fish_count_taxa_samples, here('data/macro_fish_count_taxa_samples.rds'))
 } else{
   macro_fish_count_taxa = readRDS(here("data/macro_fish_count_taxa.rds"))
 }
 
 ## create sample and site level biodiversity measures
-max(macro_fish_count_taxa$sample_id)
 if(rerun){
 # create a species list to isolate wide format actions
-taxa_list = macro_fish_count_taxa %>% 
+taxa_list = macro_fish_count_taxa_samples %>% 
   select(taxon_id) %>% 
   unlist %>% unique
   
-macro_fish_count_wide = macro_fish_count_taxa %>% 
+macro_fish_count_wide = macro_fish_count_taxa_samples %>% 
   ungroup %>% 
-  pivot_wider(id_cols = c(site_id, sample_id, year_month),
+  pivot_wider(id_cols = c(site_id, sample_id),
               names_from = taxon_id, values_from = count_m2,
               values_fn = sum, values_fill = 0)
 
-macro_fish_density_wide = macro_fish_count_taxa %>% 
+macro_fish_density_wide = macro_fish_count_taxa_samples %>% 
   ungroup %>% 
   mutate(den = round(count_m2 * (1/min(count_m2))),
-         .by = c('site_id','sample_id','year_month')) %>% 
-  pivot_wider(id_cols = c(site_id, sample_id, year_month),
+         .by = c('site_id','sample_id')) %>% 
+  pivot_wider(id_cols = c(site_id, sample_id),
               names_from = taxon_id, values_from = den,
               values_fn = sum, values_fill = 0)
 
 # Species biodiversity data sets
-H_dat = macro_fish_count_wide
+H_dat = macro_fish_density_wide
 H_dat = H_dat %>% left_join(
   H_dat %>% distinct(site_id) %>% bind_cols(
     specpool(H_dat %>%
@@ -399,10 +418,10 @@ H_dat = H_dat %>% left_join(
              pool = H_dat %>% select(site_id) %>% unlist,
              smallsample = TRUE)
     ), by = c('site_id')) %>% 
-  left_join(H_dat %>% select( site_id, sample_id, year_month) %>% bind_cols(
+  left_join(H_dat %>% select( site_id, sample_id) %>% bind_cols(
     macro_fish_density_wide %>% select(all_of(taxa_list)) %>% 
       apply(., 1, estimateR) %>% t
-  ), by = c('site_id','sample_id','year_month')
+  ), by = c('site_id','sample_id')
   ) 
 H_dat$hill_0 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 0)
 H_dat$hill_1 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 1)
@@ -425,88 +444,95 @@ saveRDS(taxa_list, here('data/taxa_list.rds'))
               hill_0 = mean(hill_0),
               hill_1 = mean(hill_1),
               hill_2 = mean(hill_2),
-              .by = c('site_int','site_id')
+              .by = c('site_id')
               ) %>% 
     mutate(across(where(is.numeric), round))
-
+  x = x+1
+system(
+  paste0(
+  'git add -A && git commit -m "rerun #',x,'" && git push'
+  )
+)
 }
+
+
 ###
 
-sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>% 
-  select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>% 
-  mutate(b = dw * no_m2) %>% 
-  mutate(dw_mean = weighted.mean(dw, no_m2), .by = c(site_id, sample_id)) %>% 
-  summarise(no_m2 = sum(no_m2),
-            b = sum(b), .by = c(site_id, sample_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
-
-lambdas <- readRDS(here("data/lambdas.rds"))
-
-ARIKLambdas = lambdas %>% 
-  filter(site_id == 'ARIK',
-         year == 2016) %>% 
-  .[c(2,1),]
-
-ARIKParams = sampleParams %>% 
-  filter(site_id == 'ARIK',
-         year == 2016)
-
-dat = bind_cols(ARIKLambdas, ARIKParams) %>% 
-  select(site_id = site_id...6, year = year...5,
-         .epred, .lower, .upper, .width, .point, .interval,
-         dw_mean, xmin, xmin_c, xmax, no_m2, b) %>% 
-  mutate(m_old = pmap_dbl(.,~pareto_expectation(lambda = ..3,
-                                                xmin = ..10,
-                                                xmax = ..12)),
-         m_est = pmap_dbl(.,~pareto_expectation(lambda = ..3,
-                                                xmin = 0.0006,
-                                                xmax = ..12)),
-         m_est_l = pmap_dbl(.,~pareto_expectation(lambda = ..4,
-                                                  xmin = 0.0006,
-                                                  xmax = ..12)),
-         m_est_u = pmap_dbl(.,~pareto_expectation(lambda = ..5,
-                                                  xmin = 0.0006,
-                                                  xmax = ..12)),
-         n_est = pmap_dbl(.,~estimate_pareto_N(n = ..13,
-                                         lambda = ..3,
-                                         xmin = ..10,
-                                         xmin2 = 0.0006,
-                                         xmax = ..12)),
-         n_est_l = pmap_dbl(.,~estimate_pareto_N(n = ..13,
-                                                 lambda = ..4,
-                                                 xmin = ..10,
-                                                 xmin2 = 0.0006,
-                                                 xmax = ..12)),
-         n_est_u = pmap_dbl(.,~estimate_pareto_N(n = ..13,
-                                                 lambda = ..5,
-                                                 xmin = ..10,
-                                                 xmin2 = 0.0006,
-                                                 xmax = ..12)),
-         b_old = m_old * no_m2,
-         b_est = m_est * n_est,
-         b_est_l = m_est_l * n_est_l,
-         b_est_u = m_est_u * n_est_u,
-         b_diff = b_est - b,
-         b_diff_l = b_est_l - b,
-         b_diff_u = b_est_u -b)
-
-sum(isdbayes::rparetocounts(96633, lambda = -2.01, xmin = 0.0006, xmax = 30840))
-
-# calculate the 
-# debugonce(pareto_expectation)
-pareto_expectation(lambda = dat$.epred[1],
-                   xmin = dat$xmin[1],
-                   xmax = dat$xmax[1])
-
-m_est = pareto_expectation(lambda = dat$.epred[1],
-                   xmin = 0.0006,
-                   xmax = dat$xmax[1])
-
-n_est = estimate_pareto_N(n = dat$no_m2[1],
-                  lambda = dat$.epred[1],
-                  xmin = dat$xmin[1],
-                  xmin2 = 0.0006,
-                  xmax = dat$xmax[1])
-dat$no_m2[1]
-dat$b[1]
-
-n_est * m_est
+# sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>% 
+#   select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>% 
+#   mutate(b = dw * no_m2) %>% 
+#   mutate(dw_mean = weighted.mean(dw, no_m2), .by = c(site_id, sample_id)) %>% 
+#   summarise(no_m2 = sum(no_m2),
+#             b = sum(b), .by = c(site_id, sample_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
+# 
+# lambdas <- readRDS(here("data/lambdas.rds"))
+# 
+# ARIKLambdas = lambdas %>% 
+#   filter(site_id == 'ARIK',
+#          year == 2016) %>% 
+#   .[c(2,1),]
+# 
+# ARIKParams = sampleParams %>% 
+#   filter(site_id == 'ARIK',
+#          year == 2016)
+# 
+# dat = bind_cols(ARIKLambdas, ARIKParams) %>% 
+#   select(site_id = site_id...6, year = year...5,
+#          .epred, .lower, .upper, .width, .point, .interval,
+#          dw_mean, xmin, xmin_c, xmax, no_m2, b) %>% 
+#   mutate(m_old = pmap_dbl(.,~pareto_expectation(lambda = ..3,
+#                                                 xmin = ..10,
+#                                                 xmax = ..12)),
+#          m_est = pmap_dbl(.,~pareto_expectation(lambda = ..3,
+#                                                 xmin = 0.0006,
+#                                                 xmax = ..12)),
+#          m_est_l = pmap_dbl(.,~pareto_expectation(lambda = ..4,
+#                                                   xmin = 0.0006,
+#                                                   xmax = ..12)),
+#          m_est_u = pmap_dbl(.,~pareto_expectation(lambda = ..5,
+#                                                   xmin = 0.0006,
+#                                                   xmax = ..12)),
+#          n_est = pmap_dbl(.,~estimate_pareto_N(n = ..13,
+#                                          lambda = ..3,
+#                                          xmin = ..10,
+#                                          xmin2 = 0.0006,
+#                                          xmax = ..12)),
+#          n_est_l = pmap_dbl(.,~estimate_pareto_N(n = ..13,
+#                                                  lambda = ..4,
+#                                                  xmin = ..10,
+#                                                  xmin2 = 0.0006,
+#                                                  xmax = ..12)),
+#          n_est_u = pmap_dbl(.,~estimate_pareto_N(n = ..13,
+#                                                  lambda = ..5,
+#                                                  xmin = ..10,
+#                                                  xmin2 = 0.0006,
+#                                                  xmax = ..12)),
+#          b_old = m_old * no_m2,
+#          b_est = m_est * n_est,
+#          b_est_l = m_est_l * n_est_l,
+#          b_est_u = m_est_u * n_est_u,
+#          b_diff = b_est - b,
+#          b_diff_l = b_est_l - b,
+#          b_diff_u = b_est_u -b)
+# 
+# sum(isdbayes::rparetocounts(96633, lambda = -2.01, xmin = 0.0006, xmax = 30840))
+# 
+# # calculate the 
+# # debugonce(pareto_expectation)
+# pareto_expectation(lambda = dat$.epred[1],
+#                    xmin = dat$xmin[1],
+#                    xmax = dat$xmax[1])
+# 
+# m_est = pareto_expectation(lambda = dat$.epred[1],
+#                    xmin = 0.0006,
+#                    xmax = dat$xmax[1])
+# 
+# n_est = estimate_pareto_N(n = dat$no_m2[1],
+#                   lambda = dat$.epred[1],
+#                   xmin = dat$xmin[1],
+#                   xmin2 = 0.0006,
+#                   xmax = dat$xmax[1])
+# dat$no_m2[1]
+# dat$b[1]
+# 
+# n_est * m_est

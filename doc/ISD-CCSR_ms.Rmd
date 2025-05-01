@@ -93,6 +93,7 @@ H_summ = H_dat %>%
   mutate(across(where(is.numeric), round))
 
 # read in data and calc sample level summaries
+# dw_dat = readRDS(here("data/))
 # dw_dat = readRDS(here("data/dat_2022_notculled.rds")) %>% 
 dw_dat = readRDS(here('data/dat_2022_clauset.rds')) %>% 
   ungroup %>% 
@@ -148,11 +149,11 @@ lambdas = readRDS(here("data/lambda_table.rds")) %>%
 dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = TRUE) %>% 
   left_join(H_summ, by = 'site_id')
 
-# 
-# dw_dat_summ %>% 
-#   ggplot()+
-#   geom_point(aes(x = lmbar_n, y = lb_m2, color = site_id))+
-#   scale_color_viridis(discrete = TRUE)
+
+dw_dat_summ %>%
+  ggplot()+
+  geom_point(aes(x = hill_0, y = lb_m2, color = site_id))+
+  scale_color_viridis(discrete = TRUE)
 
 rm("lambdas", "dw_dat", "dw_dat_temp") 
 ```
@@ -215,10 +216,14 @@ b_s_pred_plot = b_s_pred %>%
 ```
 
 ```{r allometric models}
+dw_dat_summ %>% 
+  ggplot()+
+  geom_point(aes(x = lmbar_b_met, y = lb_m2))
+
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ lmbar_n),
+      bf(lb_m2 ~ lmbar_b_met),
       data = dw_dat_summ,
       family = gaussian(link = 'identity'),
       iter = 1000,
@@ -234,28 +239,28 @@ output =
 b_m_lm = readRDS(here("data/models/b_m.rds"))
 b_m_lm_int =fixef(b_m_lm)[1,'Estimate']
 b_m_lm_fix = fixef(b_m_lm)[2, 'Estimate']
-b_m_lm_pred = predict(b_m_lm, newdata = dw_dat_summ %>% select(site_id, lmbar_n))
+b_m_lm_pred = predict(b_m_lm, newdata = dw_dat_summ %>% select(site_id, lmbar_b_met))
 
 b_m_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
-            lmbar_n = lmbar_n) %>% 
+            lmbar_b_met = lmbar_b_met) %>% 
   add_epred_draws(b_m_lm, ndraws = 100, re_formula = NA)
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
-M_breaks = seq.int(round(min(dw_dat_summ$lmbar_n, na.rm = TRUE)), round(max(dw_dat_summ$lmbar_n, na.rm = TRUE)), by = 2)
+M_breaks = seq.int(round(min(dw_dat_summ$lmbar_b_met, na.rm = TRUE)), round(max(dw_dat_summ$lmbar_b_met, na.rm = TRUE)), by = 2)
 M_labels = format(exp(M_breaks), scientific = TRUE, digits = 2)
 
 text_annotation = paste("~Theta ==",eval(round(b_m_lm_fix,2)))
 
 b_m_pred_plot = b_m_pred %>% 
   ggplot()+
-  geom_path(aes(x = lmbar_n, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
-  geom_point(data = dw_dat_summ, aes(x = lmbar_n, y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5, position = position_jitter(width = 0.02))+
-  geom_point(data = dw_dat_summ %>% summarise(lmbar_n = mean(lmbar_n),
+  geom_path(aes(x = lmbar_b_met, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dw_dat_summ, aes(x = lmbar_b_met, y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5, position = position_jitter(width = 0.02))+
+  geom_point(data = dw_dat_summ %>% summarise(lmbar_b_met = mean(lmbar_b_met),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
-             aes(x = lmbar_n, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = expression(over("M"["N-weighed"])),
+             aes(x = lmbar_b_met, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
+  scale_x_continuous(name = expression(over(,"M"["B-weighed"]^0.75)),
                      breaks = M_breaks,
                      labels = M_labels)+#,
                      # limits = c(3.91,5))+
