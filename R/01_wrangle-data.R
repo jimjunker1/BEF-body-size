@@ -436,10 +436,10 @@ x = readRDS(here('data/x.rds'))+1
 #     'git add -A && git commit -m "rerun #',x,'" && git push'
 #   )
 # )
-commit_mess = paste0("rerun commit #",x)
-map(gert::git_status()[gert::git_status()$status == 'new', 'file'] %>% unlist, ~gert::git_add(.x))
-gert::git_commit_all(commit_mess)
-gert::git_push()
+# commit_mess = paste0("rerun commit #",x)
+# map(gert::git_status()[gert::git_status()$status == 'new', 'file'] %>% unlist, ~gert::git_add(.x))
+# gert::git_commit_all(commit_mess)
+# gert::git_push()
 } else{
   H_dat = readRDS(here('data/macro_fish_diversity.rds'))
 
