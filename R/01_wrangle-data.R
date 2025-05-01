@@ -10,6 +10,7 @@ source(here::here("R/helpers.R"))
 # get sample and site level biodiversity data
 #### Start with fish to adjust abundances
 if(rerun){
+gert::git_pull()
 # 1) load the stores
 ## fish
 neonstore::neon_store(
@@ -429,6 +430,16 @@ H_dat$hill_2 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 2)
 
 saveRDS(H_dat, here('data/macro_fish_diversity.rds'))
 saveRDS(taxa_list, here('data/taxa_list.rds'))
+x = readRDS(here('data/x.rds'))+1
+# system(
+#   paste0(
+#     'git add -A && git commit -m "rerun #',x,'" && git push'
+#   )
+# )
+commit_mess = paste0("rerun commit #",x)
+map(gert::git_status()[gert::git_status()$status == 'new', 'file'] %>% unlist, ~gert::git_add(.x))
+gert::git_commit_all(commit_mess)
+gert::git_push()
 } else{
   H_dat = readRDS(here('data/macro_fish_diversity.rds'))
 
@@ -447,12 +458,7 @@ saveRDS(taxa_list, here('data/taxa_list.rds'))
               .by = c('site_id')
               ) %>% 
     mutate(across(where(is.numeric), round))
-  x = x+1
-system(
-  paste0(
-  'git add -A && git commit -m "rerun #',x,'" && git push'
-  )
-)
+
 }
 
 
