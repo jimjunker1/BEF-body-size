@@ -255,7 +255,7 @@ b_m_pred_plot = b_m_pred %>%
   geom_point(data = dw_dat_summ %>% summarise(lmbar_n = mean(lmbar_n),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
              aes(x = lmbar_n, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = expression(paste(over("M"),["N-weighed"])),
+  scale_x_continuous(name = expression(over("M"["N-weighed"])),
                      breaks = M_breaks,
                      labels = M_labels)+#,
                      # limits = c(3.91,5))+
