@@ -74,7 +74,7 @@ rstan::rstan_options(auto_write = TRUE)
 # read in the data for species richness across sites
 
 taxa_list = readRDS(here('data/taxa_list.rds'))
-H_dat = readRDS(here('data/macro_fish_diversity.rds'))
+H_dat = readRDS(here('data/macro_fish_diversity.rds')) 
 
 H_summ = H_dat %>% 
   summarise(S_obs_inc = mean(Species),
@@ -88,13 +88,16 @@ H_summ = H_dat %>%
             hill_0 = mean(hill_0),
             hill_1 = mean(hill_1),
             hill_2 = mean(hill_2),
-            .by = c('site_int','site_id')
+            .by = c('site_id')
             ) %>% 
   mutate(across(where(is.numeric), round))
 
 # read in data and calc sample level summaries
-dw_dat = readRDS(here("data/dat_fish_inverts_dw_allyears.rds")) %>% 
-  rename(collect_date = date) %>% 
+# dw_dat = readRDS(here("data/dat_2022_notculled.rds")) %>% 
+dw_dat = readRDS(here('data/dat_2022_clauset.rds')) %>% 
+  ungroup %>% 
+  #clean to relevant columns for sample summaries
+  select(dw, no_m2, site_id, collect_date, sample_id) %>% 
   mutate(collect_date = as.Date(collect_date),
          year = year(collect_date),
          month = month(collect_date),
@@ -104,10 +107,10 @@ dw_dat = readRDS(here("data/dat_fish_inverts_dw_allyears.rds")) %>%
          b_m2 = no_m2*dw,
          b_sum = sum(b_m2),
          b_rel = b_m2/b_sum,
-         .by = c('site_id', 'sample_int','collect_date'))
+         .by = c('site_id', 'sample_id','collect_date'))
 
 # get weighted mean body size
-dw_dat_summ = dw_dat %>% 
+dw_dat_temp = dw_dat %>% 
   ungroup %>% 
   mutate(dw_met = dw^0.75) %>%
   summarise(n_tot = sum(n_sum),
@@ -120,27 +123,45 @@ dw_dat_summ = dw_dat %>%
             lmbar_b_met = log(mbar_b_met),
             lmbar_n = log(mbar_n),
             lmbar_b = log(mbar_b),
-            b_m2 = unique(b_sum),
+            b_m2 = sum(b_sum),
             lb_m2 = log(b_m2),
             m_max = max(dw, na.rm = TRUE),
-            .by = c('site_id','sample_int','year_month')) %>% 
-  mutate(across(all_of(c("ln_tot", "lmbar_n_met", "lmbar_b_met", "lmbar_n", "lmbar_b")), ~as.numeric(scale(.)), .names  = "{.col}_s"))%>% 
-  left_join(dw_dat %>% ungroup %>% select(site_id, gpp, log_gpp_s, log_om_s, mat_s) %>% distinct(), by = 'site_id')
+            .by = c('site_id','sample_id')) %>% 
+  mutate(across(all_of(c("ln_tot", "lmbar_n_met", "lmbar_b_met", "lmbar_n", "lmbar_b")), ~as.numeric(scale(.)), .names  = "{.col}_s"))#%>% 
+  # left_join(dw_dat %>% ungroup %>% select(site_id, gpp, log_gpp_s, log_om_s, mat_s) %>% distinct(), by = 'site_id')
 
 # read in lambdas by sample_id
 lambdas = readRDS(here("data/lambda_table.rds")) %>% 
-  select(sample_int = sample_id, lambda_med = lambda_median, lower_lambda = '.lower', upper_lambda = '.upper') 
+  select(sample_id, lambda_med = lambda_median, lower_lambda = '.lower', upper_lambda = '.upper') %>% 
+  left_join(readRDS(here('data/dat_2022_notculled.rds'))%>%
+              select(site_id, collect_date, sample_id) %>%
+              distinct() %>% 
+              mutate(collect_date = as.Date(collect_date),
+                     year = year(collect_date),
+                     month = month(collect_date),
+                     year_month = paste(year, month, sep = "_")
+                     ), by = 'sample_id'
+            ) %>% 
+  select(site_id, sample_id, lambda_med, lower_lambda, upper_lambda) %>% 
+  distinct()
 
-dw_dat_summ = merge(dw_dat_summ, H_dat %>% select(-all_of(taxa_list)), by = c('site_id','sample_int'), all = TRUE)
+dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = TRUE) %>% 
+  left_join(H_summ, by = 'site_id')
 
-rm("lambdas", "dw_dat") 
+# 
+# dw_dat_summ %>% 
+#   ggplot()+
+#   geom_point(aes(x = lmbar_n, y = lb_m2, color = site_id))+
+#   scale_color_viridis(discrete = TRUE)
+
+rm("lambdas", "dw_dat", "dw_dat_temp") 
 ```
 
 ```{r richness models}
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ log(S_obs_inc)),
+      bf(lb_m2 ~ log(hill_0)),
       data = dw_dat_summ,
       family = gaussian(link = 'identity'),
       iter = 1000,
@@ -165,8 +186,8 @@ b_s_pred = dw_dat_summ %>%
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
-# S_breaks = seq.int(round(min(log(dw_dat_summ$hill_0))), round(max(log(dw_dat_summ$hill_0))), by = 0.25)
-S_breaks = log(c(50, 75, 100, 125, 150))
+# S_breaks = seq.int(floor(min(log(dw_dat_summ$hill_0))), ceiling(max(log(dw_dat_summ$hill_0))), by = 0.25)
+S_breaks = log(c(25, 50, 75, 100, 125, 150))
 S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
 text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
 
@@ -177,12 +198,12 @@ b_s_pred_plot = b_s_pred %>%
   geom_point(data = dw_dat_summ %>% summarise(hill_0 = mean(hill_0),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
              aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = "Species richness",
+  scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
                      breaks = S_breaks,
                      labels = S_labels,
-                     limits = c(3.91,5))+
-  scale_y_continuous(name = expression("Biomass (g"~m^-2*")"),
-                     limits = c(5,13),
+                     limits = c(3,4.7))+
+  scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
+                     # limits = c(5,13),
                      breaks = b_breaks,
                     labels = b_labels
   )+
@@ -234,12 +255,12 @@ b_m_pred_plot = b_m_pred %>%
   geom_point(data = dw_dat_summ %>% summarise(lmbar_n = mean(lmbar_n),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
              aes(x = lmbar_n, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = expression(),
+  scale_x_continuous(name = expression(paste(over("M"),["N-weighed"])),
                      breaks = M_breaks,
                      labels = M_labels)+#,
                      # limits = c(3.91,5))+
-  scale_y_continuous(name = expression("Biomass (g"~m^-2*")"),
-                     limits = c(5,13),
+  scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
+                     # limits = c(5,13.234),
                      breaks = b_breaks,
                     labels = b_labels
   )+

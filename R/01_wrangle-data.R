@@ -4,7 +4,7 @@ here::i_am("R/01_wrangle-data.R")
 cat("Data stores were updated",as.character(readRDS(here::here("data/date_updated.rds"))))
 ## should we update all of the data stores?
 update = FALSE
-rerun = TRUE
+rerun = FALSE
 source(here::here("R/helpers.R"))
  
 # get sample and site level biodiversity data
@@ -307,34 +307,61 @@ macro_count_taxa <- macro_load %>%
   summarise(count = sum(estimated_total_count, na.rm = TRUE),
             .by = c('site_id','year_month','taxon_id')
             )
-macro_site_year = macro_count_taxa %>%
-  mutate(site_year = paste(site_id, year_month, sep = "_")) %>%
+
+# vector of samples for lambdas
+sample_site_year_vec = dat_2022_clauset %>% 
+  ungroup %>% 
+  select(site_id, sample_id, collect_date) %>% 
+  mutate(collect_date = as.Date(collect_date),
+         year = year(collect_date),
+         month = month(collect_date),
+         year_month = paste(year, month, sep = "_"),
+         site_year = paste(site_id, year_month, sep = '_')) %>% 
   select(site_year) %>% unlist %>% unique
 
-fish_site_year = fish_count_taxa %>% 
+# df to merge samples for lambdas
+sample_site_year_df = dat_2022_clauset %>% 
+  ungroup %>% 
+  select(site_id, sample_id, collect_date) %>% 
+  mutate(collect_date = as.Date(collect_date),
+         year = year(collect_date),
+         month = month(collect_date),
+         year_month = paste(year, month, sep = "_"),
+         site_year = paste(site_id, year_month, sep = '_')) %>% 
+  select(site_id, sample_id, site_year) %>% 
+  distinct()
+
+macro_site_year_vec = macro_count_taxa %>%
   mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
   select(site_year) %>% unlist %>% unique
 
-common_site_year = intersect(macro_site_year, fish_site_year)
+macro_samples = intersect(macro_site_year_vec, sample_site_year_vec)
+
+fish_site_year_vec = fish_count_taxa %>% 
+  mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
+  select(site_year) %>% unlist %>% unique
+
+fish_samples = intersect(fish_site_year_vec, sample_site_year_vec)
+
 
 fish_count_taxa =fish_count_taxa %>% 
   mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
-  filter(site_year %in% common_site_year) %>% 
+  filter(site_year %in% fish_samples) %>% 
+  left_join(sample_site_year_df, by = c('site_id','site_year')) %>% 
   select(-site_year) %>% 
   filter(!is.na(no_fish_per_m2))
 
 macro_count_taxa = macro_count_taxa %>% 
   mutate(site_year = paste(site_id, year_month, sep = "_")) %>% 
-  filter(site_year %in% common_site_year) %>% 
+  filter(site_year %in% macro_samples) %>% 
+  left_join(sample_site_year_df, by = c('site_id','site_year')) %>% 
   select(-site_year) %>% 
   filter(!is.na(count))
 
 macro_fish_count_taxa = macro_count_taxa %>% 
   rename(count_m2 = count) %>% 
   bind_rows(fish_count_taxa %>%
-              select(site_id, year_month, taxon_id, count_m2 = no_fish_per_m2)) %>%
-  left_join(macro_count_taxa %>% distinct(site_id, year_month) %>% mutate(sample_int = 1:n()), by = c('site_id','year_month')) %>% 
-  left_join(macro_count_taxa %>% distinct(site_id) %>% arrange(site_id) %>%  mutate(site_int = 1:n()), by = c('site_id'))
+              select(site_id, year_month, taxon_id, count_m2 = no_fish_per_m2))
 
 saveRDS(macro_fish_count_taxa, here("data/macro_fish_count_taxa.rds"))
 } else{
@@ -342,7 +369,7 @@ saveRDS(macro_fish_count_taxa, here("data/macro_fish_count_taxa.rds"))
 }
 
 ## create sample and site level biodiversity measures
-max(macro_fish_count_taxa$sample_int)
+max(macro_fish_count_taxa$sample_id)
 if(rerun){
 # create a species list to isolate wide format actions
 taxa_list = macro_fish_count_taxa %>% 
@@ -351,31 +378,31 @@ taxa_list = macro_fish_count_taxa %>%
   
 macro_fish_count_wide = macro_fish_count_taxa %>% 
   ungroup %>% 
-  pivot_wider(id_cols = c(site_int, site_id, sample_int, year_month),
+  pivot_wider(id_cols = c(site_id, sample_id, year_month),
               names_from = taxon_id, values_from = count_m2,
               values_fn = sum, values_fill = 0)
 
 macro_fish_density_wide = macro_fish_count_taxa %>% 
   ungroup %>% 
   mutate(den = round(count_m2 * (1/min(count_m2))),
-         .by = c('site_int','site_id','sample_int','year_month')) %>% 
-  pivot_wider(id_cols = c(site_int, site_id, sample_int, year_month),
+         .by = c('site_id','sample_id','year_month')) %>% 
+  pivot_wider(id_cols = c(site_id, sample_id, year_month),
               names_from = taxon_id, values_from = den,
               values_fn = sum, values_fill = 0)
 
 # Species biodiversity data sets
 H_dat = macro_fish_count_wide
 H_dat = H_dat %>% left_join(
-  H_dat %>% distinct(site_int, site_id) %>% bind_cols(
+  H_dat %>% distinct(site_id) %>% bind_cols(
     specpool(H_dat %>%
                select(all_of(taxa_list)),
-             pool = H_dat %>% select(site_int) %>% unlist,
+             pool = H_dat %>% select(site_id) %>% unlist,
              smallsample = TRUE)
-    ), by = c('site_int','site_id')) %>% 
-  left_join(H_dat %>% select(site_int, site_id, sample_int, year_month) %>% bind_cols(
+    ), by = c('site_id')) %>% 
+  left_join(H_dat %>% select( site_id, sample_id, year_month) %>% bind_cols(
     macro_fish_density_wide %>% select(all_of(taxa_list)) %>% 
       apply(., 1, estimateR) %>% t
-  ), by = c('site_int','site_id','sample_int','year_month')
+  ), by = c('site_id','sample_id','year_month')
   ) 
 H_dat$hill_0 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 0)
 H_dat$hill_1 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 1)
