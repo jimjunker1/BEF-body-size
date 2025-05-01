@@ -128,40 +128,42 @@ dw_dat_summ = dw_dat %>%
   left_join(dw_dat %>% ungroup %>% select(site_id, gpp, log_gpp_s, log_om_s, mat_s) %>% distinct(), by = 'site_id')
 
 # read in lambdas by sample_id
-lambdas = read_csv(here("data/post_sample_lambdas.csv")) %>% 
-  select(sample_int = sample_id, lambda_med = '.epred', lower_lambda = '.lower', upper_lambda = '.upper') 
+lambdas = readRDS(here("data/lambda_table.rds")) %>% 
+  select(sample_int = sample_id, lambda_med = lambda_median, lower_lambda = '.lower', upper_lambda = '.upper') 
 
-dw_dat_summ = merge(dw_dat_summ, lambdas, by = 'sample_int', all = TRUE) %>% 
-  left_join(H_summ, by ='site_id')
+dw_dat_summ = merge(dw_dat_summ, H_dat %>% select(-all_of(taxa_list)), by = c('site_id','sample_int'), all = TRUE)
 
 rm("lambdas", "dw_dat") 
 ```
 
 ```{r richness models}
-output = capture.output(brm(bf(lb_m2 ~ log(hill_0)),# + (1|site_id)),
-                        data = dw_dat_summ,
-                        family = gaussian(link = 'identity'),
-                        iter = 1000,
-                        thin = 1,
-                        file_refit = 'on_change',
-                        file = here("data/models/b_s"),
-                        chains = 4,
-                        cores = 4,
-                        seed = 1312
-                        ))
+output = 
+  capture.output(
+    brm(
+      bf(lb_m2 ~ log(S_obs_inc)),
+      data = dw_dat_summ,
+      family = gaussian(link = 'identity'),
+      iter = 1000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_s"),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
 
 b_s_lm = readRDS(here("data/models/b_s.rds"))
 b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
 b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
 b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
 
-
 b_s_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
             hill_0 = hill_0) %>% 
-  add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA)#~(1|site_id))
+  add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA)
 
-b_breaks = seq.int(round(min(dw_dat_summ$lb_m2)), round(max(dw_dat_summ$lb_m2)), by = 2)
+b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(round(min(log(dw_dat_summ$hill_0))), round(max(log(dw_dat_summ$hill_0))), by = 0.25)
 S_breaks = log(c(50, 75, 100, 125, 150))
@@ -172,13 +174,13 @@ b_s_pred_plot = b_s_pred %>%
   ggplot()+
   geom_path(aes(x = log(hill_0), y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
   geom_point(data = dw_dat_summ, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5, position = position_jitter(width = 0.02))+
-  geom_point(data = dw_dat_summ %>% summarise(hill_0 = unique(hill_0),
+  geom_point(data = dw_dat_summ %>% summarise(hill_0 = mean(hill_0),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
              aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
   scale_x_continuous(name = "Species richness",
                      breaks = S_breaks,
                      labels = S_labels,
-                     limits = c(3.9,5))+
+                     limits = c(3.91,5))+
   scale_y_continuous(name = expression("Biomass (g"~m^-2*")"),
                      limits = c(5,13),
                      breaks = b_breaks,
@@ -187,10 +189,63 @@ b_s_pred_plot = b_s_pred %>%
   scale_fill_viridis(discrete = TRUE)+
   annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = text_annotation )+
   theme(legend.position = 'none');b_s_pred_plot
-
-
 #%>% 
-  left_join(dw_dat_summ %>% select(site_id, lb_m2, lambda_med, log_gpp_s, log_om_s), by = 'S.obs') 
+#   left_join(dw_dat_summ %>% select(site_id, lb_m2, lambda_med, log_gpp_s, log_om_s), by = 'S.obs') 
+```
+
+```{r allometric models}
+output = 
+  capture.output(
+    brm(
+      bf(lb_m2 ~ lmbar_n),
+      data = dw_dat_summ,
+      family = gaussian(link = 'identity'),
+      iter = 1000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_m"),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+
+b_m_lm = readRDS(here("data/models/b_m.rds"))
+b_m_lm_int =fixef(b_m_lm)[1,'Estimate']
+b_m_lm_fix = fixef(b_m_lm)[2, 'Estimate']
+b_m_lm_pred = predict(b_m_lm, newdata = dw_dat_summ %>% select(site_id, lmbar_n))
+
+b_m_pred = dw_dat_summ %>% 
+  data_grid(site_id = site_id,
+            lmbar_n = lmbar_n) %>% 
+  add_epred_draws(b_m_lm, ndraws = 100, re_formula = NA)
+
+b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
+b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
+M_breaks = seq.int(round(min(dw_dat_summ$lmbar_n, na.rm = TRUE)), round(max(dw_dat_summ$lmbar_n, na.rm = TRUE)), by = 2)
+M_labels = format(exp(M_breaks), scientific = TRUE, digits = 2)
+
+text_annotation = paste("~Theta ==",eval(round(b_m_lm_fix,2)))
+
+b_m_pred_plot = b_m_pred %>% 
+  ggplot()+
+  geom_path(aes(x = lmbar_n, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dw_dat_summ, aes(x = lmbar_n, y = lb_m2, fill = site_id), shape = 21, color = 'black', alpha = 0.5, position = position_jitter(width = 0.02))+
+  geom_point(data = dw_dat_summ %>% summarise(lmbar_n = mean(lmbar_n),
+                                              lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
+             aes(x = lmbar_n, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
+  scale_x_continuous(name = expression(),
+                     breaks = M_breaks,
+                     labels = M_labels)+#,
+                     # limits = c(3.91,5))+
+  scale_y_continuous(name = expression("Biomass (g"~m^-2*")"),
+                     limits = c(5,13),
+                     breaks = b_breaks,
+                    labels = b_labels
+  )+
+  scale_fill_viridis(discrete = TRUE)+
+  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = text_annotation )+
+  theme(legend.position = 'none');b_m_pred_plot
 ```
 
 
@@ -198,17 +253,20 @@ b_s_pred_plot = b_s_pred %>%
 ## calculate the bayesian linear regression
 ### metabolic mass models
 
-output = capture.output(brm(bf(ln_tot_s~lmbar_n_met_s+(1 + lmbar_n_met_s|site_id)),
-              data = dw_dat_summ,
-              family = gaussian(link = 'identity'),
-              iter = 1000,
-              thin = 1,
-              file_refit = 'never',
-              file = here("data/models/NM_met_nwt"),
-              chains = 4, cores = 4,
-              seed = 1312
-              )
-)
+output = 
+  capture.output(
+    brm(bf(ln_tot_s~lmbar_n_met_s+(1 + lmbar_n_met_s|site_id)),
+        data = dw_dat_summ,
+        family = gaussian(link = 'identity'),
+        iter = 2000,
+        thin = 1,
+        file_refit = 'on_change',
+        file = here("data/models/NM_met_nwt"),
+        chains = 4, cores = 4,
+        seed = 1312
+        )
+    )
+
 NM_met_nwt = readRDS(here("data/models/NM_met_nwt.rds"))
 NM_met_nwt_int =fixef(NM_met_nwt)[1,'Estimate']
 
@@ -218,16 +276,20 @@ NM_met_nwt_pred = dw_dat_summ %>%
   left_join(dw_dat_summ %>% select(site_id, lmbar_n_met_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s), by = 'lmbar_n_met_s') %>% 
   mutate(resid_theory = ln_tot_s - pred)
 
-output = capture.output(brm(bf(ln_tot_s~lmbar_b_met_s+(1 + lmbar_b_met_s|site_id)),
-              data = dw_dat_summ,
-              family = gaussian(link = 'identity'),
-              iter = 1000,
-              thin = 1,
-              file_refit = 'never',
-              file = here("data/models/NM_met_bwt"),
-              chains = 4, cores = 4,
-              seed = 1312
-              ))
+output = capture.output(
+  brm(
+    bf(ln_tot_s~lmbar_b_met_s),#+(1 + lmbar_b_met_s|site_id)),
+    data = dw_dat_summ,
+    family = gaussian(link = 'identity'),
+    iter = 1000,
+    thin = 1,
+    file_refit = 'on_change',
+    file = here("data/models/NM_met_bwt"),
+    control = list(adapt_delta = 0.9),
+    chains = 4, cores = 4,
+    seed = 1312
+    )
+  )
 NM_met_bwt = readRDS(here("data/models/NM_met_bwt.rds"))
 NM_met_bwt_int =fixef(NM_met_bwt)[1,'Estimate']
 
@@ -238,24 +300,27 @@ NM_met_bwt_pred = dw_dat_summ %>%
   mutate(resid_theory = ln_tot_s - pred)
 
 ## raw body mass models
-output = capture.output(brm(bf(ln_tot_s~lmbar_n_s),
-              data = dw_dat_summ,
-              family = gaussian(link = 'identity'),
-              iter = 1000,
-              thin = 1,
-              file_refit = 'never',
-              file = here("data/models/NM_nwt"),
-              chains = 4, cores = 4,
-              sample_prior = 'yes',
-              save_pars = save_pars(all = TRUE),
-              seed = 1312
-              ))
+output = capture.output(
+  brm(
+    bf(ln_tot_s~lmbar_n_s),
+    data = dw_dat_summ,
+    family = gaussian(link = 'identity'),
+    iter = 1000,
+    thin = 1,
+    file_refit = 'on_change',
+    file = here("data/models/NM_nwt"),
+    chains = 4, cores = 4,
+    sample_prior = 'yes',
+    save_pars = save_pars(all = TRUE),
+    seed = 1312
+    )
+  )
 
 NM_nwt = readRDS(here("data/models/NM_nwt.rds"))
 NM_nwt_int =fixef(NM_nwt)[1,'Estimate']
 
-NM_nwt_ranef = ranef(NM_nwt)$site_id
-NM_nwt_slopes = NM_nwt_ranef[,,'lmbar_n0.75_s']
+# NM_nwt_ranef = ranef(NM_nwt)$site_id
+# NM_nwt_slopes = NM_nwt_ranef[,,'lmbar_n0.75_s']
 
 NM_nwt_pred = dw_dat_summ %>% 
   data_grid(lmbar_n_s = lmbar_n_s) %>% 
@@ -263,16 +328,20 @@ NM_nwt_pred = dw_dat_summ %>%
   left_join(dw_dat_summ %>% select(site_id, lmbar_n_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s), by = 'lmbar_n_s') %>% 
   mutate(resid_theory = ln_tot_s - pred)
 
-output = capture.output(brm(bf(ln_tot_s~lmbar_b_s),
-              data = dw_dat_summ,
-              family = gaussian(link = 'identity'),
-              iter = 1000,
-              thin = 1,
-              file_refit = 'never',
-              file = here("data/models/NM_bwt"),
-              chains = 4, cores = 4,
-              seed = 1312
-              ))
+output = 
+  capture.output(
+    brm(
+      bf(ln_tot_s~lmbar_b_s),
+      data = dw_dat_summ,
+      family = gaussian(link = 'identity'),
+      iter = 1000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/NM_bwt"),
+      chains = 4, cores = 4,
+      seed = 1312
+      )
+    )
 NM_bwt = readRDS(here("data/models/NM_bwt.rds"))
 NM_bwt_int =fixef(NM_bwt)[1,'Estimate']
 
@@ -360,20 +429,20 @@ data_grid(lmbar_n_met_s = seq_range(lmbar_n_met_s, n = 51)) %>%
 # create label vector for scaled breaks. s 
 # lntot_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$ln_tot) + mean(dw_dat_summ$ln_tot)),1), scientific = TRUE)
 
-lmbar_n0.75_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_n0.75) + mean(dw_dat_summ$lmbar_n0.75)),1), scientific = TRUE)
+lmbar_n_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dw_dat_summ$lmbar_n_met) + mean(dw_dat_summ$lmbar_n_met)),1), scientific = TRUE)
 
 inset = dw_dat_summ %>%
   group_by(site_id) %>% 
-  data_grid(lmbar_n0.75_s = seq_range(lmbar_n0.75_s, n = 51)) %>%
+  data_grid(lmbar_n_met_s = seq_range(lmbar_n_met_s, n = 51)) %>%
   ungroup %>% 
-  mutate(pred = predict(NM_nwt, newdata = ., re.form = ~(1 + lmbar_n0.75_s|site_id), allow.new.levels = TRUE)[,1]) %>% 
+  mutate(pred = predict(NM_met_nwt, newdata = .,)[,1]) %>% # re.form = ~(1 + lmbar_n_met_s|site_id), allow.new.levels = TRUE)[,1]) %>% 
   ggplot()+
-  geom_line(data = NM_nwt_pred, aes(x = lmbar_n0.75_s, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+
-  geom_line(aes(x = lmbar_n0.75_s, y = pred, group = site_id, color = site_id))+
+  geom_line(data = NM_met_nwt_pred, aes(x = lmbar_n_met_s, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+
+  geom_line(aes(x = lmbar_n_met_s, y = pred, group = site_id, color = site_id))+
   scale_color_viridis(discrete = TRUE, alpha = 0.8)+
   scale_fill_viridis(discrete = TRUE)+
   scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3.5, 3.5), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n_s_labels)+
+  scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n_met_s_labels)+
 theme(legend.position = 'none',
         axis.title = element_blank(),
         axis.text = element_blank(),
@@ -550,7 +619,7 @@ isd_NMnwt_plot = NM_nwt_pred %>%
   add_epred_draws(NMnwt_res_theo, re_formula = NA, ndraws = 100) %>% 
   ggplot()+
   geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
-  geom_point(data = NM_nwt_pred, aes(x = lambda_med, y = resid_theory,  fill = site_id, size = lmbar_n0.75_s),color = 'black', shape = 21, alpha = 0.6)+
+  geom_point(data = NM_met_nwt_pred, aes(x = lambda_med, y = resid_theory,  fill = site_id, size = lmbar_n_met_s),color = 'black', shape = 21, alpha = 0.6)+
   scale_color_viridis(discrete = TRUE, alpha = 0.8)+
   scale_fill_viridis(discrete = TRUE, alpha = 0.6)+
   scale_y_continuous(name = 'resids')+
