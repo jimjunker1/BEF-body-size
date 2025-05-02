@@ -461,8 +461,52 @@ x = readRDS(here('data/x.rds'))+1
 
 }
 
-
 ###
+pareto_variance <- function(lambda, x_min, x_max, tol = 1e-6) {
+  
+  if (abs(lambda + 1) < tol || abs(lambda + 2) < tol || abs(lambda + 3) < tol) {
+    stop("lambda is too close to a special case (-1, -2, -3). Explicit special-case handling needed.")
+  }
+  
+  E_M <- ((lambda + 1) / (lambda + 2)) * 
+    (x_max^(lambda + 2) - x_min^(lambda + 2)) /
+    (x_max^(lambda + 1) - x_min^(lambda + 1))
+  
+  E_M2 <- ((lambda + 1) / (lambda + 3)) * 
+    (x_max^(lambda + 3) - x_min^(lambda + 3)) /
+    (x_max^(lambda + 1) - x_min^(lambda + 1))
+  
+  var_M <- E_M2 - E_M^2
+  
+  return(var_M)
+}
+
+# Example explicitly tested
+lambda_values <- c(-1.01, -1.0001, -2.001, -2.000001, -3.1)
+sapply(lambda_values, function(lam) pareto_variance(lam, 1, 10))
+
+
+lambda <- -1.5
+x_min <- 1
+x_max <- 10
+N_total <- 1000
+
+# Calculate normalization constant c explicitly
+c <- N_total * (lambda + 1) / (x_max^(lambda + 1) - x_min^(lambda + 1))
+
+# Explicit analytical function to calculate Var(N)
+calc_abundance_variance <- function(lambda, c, x_min, x_max) {
+  term1 <- (lambda + 1) / (2 * lambda + 1)
+  numerator <- x_max^(2 * lambda + 1) - x_min^(2 * lambda + 1)
+  denominator <- x_max^(lambda + 1) - x_min^(lambda + 1)
+  varN <- c^2 * (term1 * numerator / denominator - 1)
+  return(varN)
+}
+
+# Compute Var(N) explicitly
+variance_N <- calc_abundance_variance(lambda, c, x_min, x_max)
+
+cat("Explicitly calculated variance in abundances (N):", variance_N, "\n")
 
 # sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>% 
 #   select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>% 

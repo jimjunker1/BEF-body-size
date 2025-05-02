@@ -190,7 +190,7 @@ b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(floor(min(log(dw_dat_summ$hill_0))), ceiling(max(log(dw_dat_summ$hill_0))), by = 0.25)
 S_breaks = log(c(25, 50, 75, 100, 125, 150))
 S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
-text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
+s_text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
 
 b_s_pred_plot = b_s_pred %>% 
   ggplot()+
@@ -202,24 +202,21 @@ b_s_pred_plot = b_s_pred %>%
   scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
                      breaks = S_breaks,
                      labels = S_labels,
-                     limits = c(3,4.7))+
+                     limits = c(3.2,4.85))+
   scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
-                     # limits = c(5,13),
+                     limits = c(7.675,16.22),
                      breaks = b_breaks,
-                    labels = b_labels
+                     labels = b_labels
   )+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = text_annotation )+
+  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = s_text_annotation )+
   theme(legend.position = 'none');b_s_pred_plot
+saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
 #%>% 
 #   left_join(dw_dat_summ %>% select(site_id, lb_m2, lambda_med, log_gpp_s, log_om_s), by = 'S.obs') 
 ```
 
 ```{r allometric models}
-dw_dat_summ %>% 
-  ggplot()+
-  geom_point(aes(x = lmbar_b_met, y = lb_m2))
-
 output = 
   capture.output(
     brm(
@@ -248,10 +245,12 @@ b_m_pred = dw_dat_summ %>%
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
-M_breaks = seq.int(round(min(dw_dat_summ$lmbar_b_met, na.rm = TRUE)), round(max(dw_dat_summ$lmbar_b_met, na.rm = TRUE)), by = 2)
-M_labels = format(exp(M_breaks), scientific = TRUE, digits = 2)
+# M_breaks = seq.int(round(min(dw_dat_summ$lmbar_b_met, na.rm = TRUE)), round(max(dw_dat_summ$lmbar_b_met, na.rm = TRUE)), by = 2)
+# convert log e to log 10 for estimation of 
+M_breaks = log(c(0.1,1,10,100,1000))
+M_labels = exp(M_breaks)#format(exp(M_breaks), scientific = FALSE, digits = NULL, nsmall = 0)
 
-text_annotation = paste("~Theta ==",eval(round(b_m_lm_fix,2)))
+m_text_annotation = paste("~Beta ==",eval(round(b_m_lm_fix,2)))
 
 b_m_pred_plot = b_m_pred %>% 
   ggplot()+
@@ -260,18 +259,20 @@ b_m_pred_plot = b_m_pred %>%
   geom_point(data = dw_dat_summ %>% summarise(lmbar_b_met = mean(lmbar_b_met),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
              aes(x = lmbar_b_met, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = expression(over(,"M"["B-weighed"]^0.75)),
+  scale_x_continuous(name = expression(over(,M^0.75)["B-weighed"]*"(mg "*ind^-1*")"),
                      breaks = M_breaks,
                      labels = M_labels)+#,
                      # limits = c(3.91,5))+
   scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
-                     # limits = c(5,13.234),
+                     limits = c(7.675,16.22),
                      breaks = b_breaks,
                     labels = b_labels
   )+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = text_annotation )+
+  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = m_text_annotation )+
   theme(legend.position = 'none');b_m_pred_plot
+saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
+
 ```
 
 
