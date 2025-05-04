@@ -66,7 +66,7 @@ library(brms)
 library(viridis)
 library(mgcv)
 library(hillR)
-theme_set(theme_minimal())
+theme_set(theme_minimal(base_family = 'serif'))
 
 options(mc.cores = parallel::detectCores(),
         scipen = 5)
@@ -152,7 +152,7 @@ dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = 
 
 dw_dat_summ %>%
   ggplot()+
-  geom_point(aes(x = hill_0, y = lb_m2, color = site_id))+
+  geom_point(aes(x = lmbar_b_met, y = lb_m2, color = site_id))+
   scale_color_viridis(discrete = TRUE)
 
 rm("lambdas", "dw_dat", "dw_dat_temp") 
@@ -209,7 +209,7 @@ b_s_pred_plot = b_s_pred %>%
                      labels = b_labels
   )+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = s_text_annotation )+
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = s_text_annotation, family = 'serif' )+
   theme(legend.position = 'none');b_s_pred_plot
 saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
 #%>% 
@@ -269,7 +269,7 @@ b_m_pred_plot = b_m_pred %>%
                     labels = b_labels
   )+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x = -Inf, y = Inf, vjust = 1, hjust = 0, parse = TRUE, label = m_text_annotation )+
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = m_text_annotation, family = 'serif' )+
   theme(legend.position = 'none');b_m_pred_plot
 saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
 
