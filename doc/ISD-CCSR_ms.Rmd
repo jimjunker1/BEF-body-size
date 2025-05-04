@@ -261,8 +261,8 @@ b_m_pred_plot = b_m_pred %>%
              aes(x = lmbar_b_met, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
   scale_x_continuous(name = expression(over(,M^0.75)["B-weighed"]*"(mg "*ind^-1*")"),
                      breaks = M_breaks,
-                     labels = M_labels)+#,
-                     # limits = c(3.91,5))+
+                     labels = M_labels,
+                     limits = c(-0.38,7.6))+
   scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
                      limits = c(7.675,16.22),
                      breaks = b_breaks,
