@@ -349,7 +349,7 @@ output =
       family = gaussian(link = 'identity'),
       iter = 2000,
       thin = 1,
-      file_refit = 'always',
+      file_refit = 'on_change',
       file = here("data/models/b_s_full"),
       control = list(adapt_delta = 0.99),
       chains = 4,
@@ -359,16 +359,21 @@ output =
     )
 
 b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
-plot(conditional_effects(b_s_full_lmm))
+plot(conditional_effects(b_s_full_lmm, points = TRUE, method = "posterior_predict"))
+bayes_R2(b_s_full_lmm)
+plot_predictions(b_s_full_lmm, condition = c('lambda_med'))
+
+
+
 b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
 b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
-b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
+# b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
 
 b_s_full_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
             hill_0 = hill_0,
             lambda_med = lambda_med) %>% 
-  add_epred_draws(b_s_full_lmm, ndraws = 100, re_formula = ~(1 + lambda_med |site_id))
+  add_epred_draws(b_s_full_lmm, ndraws = 100, re_formula = NA)#~(1 + lambda_med |site_id))
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
