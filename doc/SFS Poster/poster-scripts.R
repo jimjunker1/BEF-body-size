@@ -22,8 +22,14 @@ ggsave(here('doc/plots/figure1.svg'),
        width = 14,
        height = 8, units = 'in',
        scaling = 2
-       
        )
 
-# dev.off()
+fig2 = readRDS(here('doc/plots/n_m_theory_plot.rds'))
 
+ggsave(here('doc/plots/figure2.svg'),
+       fig2,
+       device = 'svg',
+       width = 8,
+       height = 8, units = 'in',
+       scaling = 2
+)
