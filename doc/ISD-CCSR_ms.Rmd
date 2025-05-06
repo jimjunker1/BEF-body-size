@@ -275,7 +275,15 @@ saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
 
 ```
 
-```{r }
+```{r allometric prediction}
+
+dw_dat_summ %>% 
+  ggplot()+
+  geom_point(aes(x = lmbar_b_met_s, y = ln_tot_s, fill = site_id),shape = 21, color = 'black', alpha = 0.5)+
+  geom_point(data = dw_dat_summ %>% summarise(lmbar_b_met_s = mean(lmbar_b_met_s, na.rm = TRUE), 
+                                              ln_tot_s = mean(ln_tot_s, na.rm = TRUE), .by = 'site_id'), aes(x = lmbar_b_met_s, y = ln_tot_s, fill = site_id), color = 'black', shape = 21, size = 3)+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none')
 
 ```
 
@@ -285,26 +293,32 @@ saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
 
 output = 
   capture.output(
-    brm(bf(ln_tot_s~lmbar_n_met_s+(1 + lmbar_n_met_s|site_id)),
+    brm(bf(ln_tot_s~lmbar_b_met_s + (1 + lmbar_b_met_s|site_id)),
         data = dw_dat_summ,
         family = gaussian(link = 'identity'),
         iter = 2000,
         thin = 1,
-        file_refit = 'on_change',
-        file = here("data/models/NM_met_nwt"),
+        file_refit = 'always',
+        file = here("data/models/NM_met_bwt"),
+        control = list(adapt_delta = 0.99),
         chains = 4, cores = 4,
         seed = 1312
         )
     )
+NM_met_bwt = readRDS(here("data/models/NM_met_bwt.rds"))
 plot(conditional_effects(NM_met_bwt))
-NM_met_nwt = readRDS(here("data/models/NM_met_nwt.rds"))
-NM_met_nwt_int =fixef(NM_met_nwt)[1,'Estimate']
+NM_met_bwt_int =fixef(NM_met_bwt)[1,'Estimate']
 
-NM_met_nwt_pred = dw_dat_summ %>% 
-  data_grid(lmbar_n_met_s = lmbar_n_met_s) %>% 
-  mutate(pred = NM_met_nwt_int + lmbar_n_met_s*-1)%>% 
-  left_join(dw_dat_summ %>% select(site_id, lmbar_n_met_s, ln_tot_s, lambda_med, log_gpp_s, log_om_s), by = 'lmbar_n_met_s') %>% 
+NM_met_bwt_pred = dw_dat_summ %>% 
+  data_grid(lmbar_b_met_s = lmbar_b_met_s) %>% 
+  mutate(pred = NM_met_bwt_int + lmbar_b_met_s*-1)%>% 
+  left_join(dw_dat_summ %>% select(site_id, lmbar_b_met_s, ln_tot_s, lambda_med), by = 'lmbar_b_met_s') %>% 
   mutate(resid_theory = ln_tot_s - pred)
+
+NM_met_bwt_pred %>% 
+  ggplot()+
+  geom_line(aes(x = lmbar_b_met_s, y = pred))+
+  geom_point(aes(x = lmbar_b_met_s, y = ln_tot_s))
 
 output = capture.output(
   brm(
