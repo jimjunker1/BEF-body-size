@@ -430,7 +430,7 @@ H_dat$hill_2 = hill_taxa(H_dat %>% select(all_of(taxa_list)), q = 2)
 
 saveRDS(H_dat, here('data/macro_fish_diversity.rds'))
 saveRDS(taxa_list, here('data/taxa_list.rds'))
-x = readRDS(here('data/x.rds'))+1
+# x = readRDS(here('data/x.rds'))+1
 # system(
 #   paste0(
 #     'git add -A && git commit -m "rerun #',x,'" && git push'
@@ -508,15 +508,18 @@ variance_N <- calc_abundance_variance(lambda, c, x_min, x_max)
 
 cat("Explicitly calculated variance in abundances (N):", variance_N, "\n")
 
-# sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>% 
-#   select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>% 
-#   mutate(b = dw * no_m2) %>% 
-#   mutate(dw_mean = weighted.mean(dw, no_m2), .by = c(site_id, sample_id)) %>% 
-#   summarise(no_m2 = sum(no_m2),
-#             b = sum(b), .by = c(site_id, sample_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
-# 
-# lambdas <- readRDS(here("data/lambdas.rds"))
-# 
+
+
+## extrapolate the es
+sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>%
+  select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>%
+  mutate(b = dw * no_m2) %>%
+  mutate(dw_mean = weighted.mean(dw, no_m2), .by = c(site_id, sample_id)) %>%
+  summarise(no_m2 = sum(no_m2),
+            b = sum(b), .by = c(site_id, sample_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
+
+lambdas <- readRDS(here("data/lambdas.rds"))
+
 # ARIKLambdas = lambdas %>% 
 #   filter(site_id == 'ARIK',
 #          year == 2016) %>% 

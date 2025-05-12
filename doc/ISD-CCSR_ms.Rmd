@@ -66,6 +66,7 @@ library(brms)
 library(viridis)
 library(mgcv)
 library(hillR)
+library(marginaleffects)
 theme_set(theme_minimal(base_family = 'serif'))
 
 options(mc.cores = parallel::detectCores(),
@@ -150,10 +151,13 @@ dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = 
   left_join(H_summ, by = 'site_id')
 
 
-# dw_dat_summ %>%
-#   ggplot()+
-#   geom_point(aes(x = lmbar_b_met, y = lb_m2, color = site_id))+
-#   scale_color_viridis(discrete = TRUE)
+dw_dat_summ %>%
+  ggplot()+
+  geom_point(aes(x = lmbar_b, y = lb_m2, color = site_id), alpha = 0.5)+
+  geom_point(data = dw_dat_summ %>% 
+               summarise(lmbar_b = mean(lmbar_b, na.rm = TRUE),
+                         lb_m2 = mean(lb_m2, na.rm = TRUE), .by = 'site_id'), aes(y = lb_m2, x = lmbar_b, color = site_id), size = 4)+ 
+  scale_color_viridis(discrete = TRUE)
 
 rm("lambdas", "dw_dat", "dw_dat_temp") 
 ```
@@ -176,6 +180,7 @@ output =
     )
 
 b_s_lm = readRDS(here("data/models/b_s.rds"))
+b_s_cond = conditional_effects(b_s_lm) %>% flatten %>% data.frame
 b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
 b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
 b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
@@ -194,7 +199,9 @@ s_text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
 
 b_s_pred_plot = b_s_pred %>% 
   ggplot()+
-  geom_path(aes(x = log(hill_0), y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  # geom_path(aes(x = log(hill_0), y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_ribbon(data = b_s_cond, aes(x = log(hill_0), ymin = lower__, ymax = upper__), fill = 'grey', alpha = 0.5)+
+  geom_path(data = b_s_cond , aes(x = log(hill_0), y = estimate__), color = 'darkgrey', linewidth = 1)+
   geom_point(data = dw_dat_summ, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
   geom_point(data = dw_dat_summ %>% summarise(hill_0 = mean(hill_0),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
@@ -222,13 +229,14 @@ saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ lmbar_b_met + (1 + lmbar_b_met | site_id)),
+      bf(lb_m2 ~ lmbar_b_met + (1 + lmbar_b_met| site_id)),
       data = dw_dat_summ,
       family = gaussian(link = 'identity'),
-      iter = 1000,
+      iter = 3000,
       thin = 1,
-      file_refit = 'on_change',
+      file_refit = 'always',
       file = here("data/models/b_m"),
+      control = list(adapt_delta = 0.99),
       chains = 4,
       cores = 4,
       seed = 1312
@@ -238,6 +246,7 @@ output =
 b_m_lm = readRDS(here("data/models/b_m.rds"))
 b_m_lm_int =fixef(b_m_lm)[1,'Estimate']
 b_m_lm_fix = fixef(b_m_lm)[2, 'Estimate']
+b_m_cond = conditional_effects(b_m_lm) %>% flatten %>% data.frame
 b_m_lm_pred = predict(b_m_lm, newdata = dw_dat_summ %>% select(site_id, lmbar_b_met))
 
 b_m_pred = dw_dat_summ %>% 
@@ -256,7 +265,9 @@ m_text_annotation = paste("~Beta ==",eval(round(b_m_lm_fix,2)))
 
 b_m_pred_plot = b_m_pred %>% 
   ggplot()+
-  geom_path(aes(x = lmbar_b_met, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_ribbon(data = b_m_cond, aes(x = lmbar_b_met, ymin = lower__, ymax= upper__), fill = 'grey', alpha = 0.5)+
+  geom_path(data = b_m_cond, aes(x = lmbar_b_met, y = estimate__), color = 'darkgrey', linewidth = 1)+
+  # geom_path(aes(x = lmbar_b_met, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
   geom_point(data = dw_dat_summ, aes(x = lmbar_b_met, y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
   geom_point(data = dw_dat_summ %>% summarise(lmbar_b_met = mean(lmbar_b_met),
                                               lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
@@ -333,7 +344,7 @@ dw_dat_summ %>%
                      labels = N_labels,
                      limits = c(0,20))+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x= -Inf, y = Inf, vjust = 5, hjust = 0, parse = TRUE, label = NM_text_annotation, family = 'serif' )+
+  annotate('text', x= -Inf, y = Inf, vjust = 5, hjust = -0.5, parse = TRUE, label = NM_text_annotation, family = 'serif' )+
   theme(legend.position = 'none');nm_theory_plot
 saveRDS(nm_theory_plot, here('doc/plots/n_m_theory_plot.rds'))
 
@@ -359,11 +370,10 @@ output =
     )
 
 b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
-plot(conditional_effects(b_s_full_lmm, points = TRUE, method = "posterior_predict"))
 bayes_R2(b_s_full_lmm)
-plot_predictions(b_s_full_lmm, condition = c('lambda_med'))
+plot_predictions(b_s_full_lmm, condition = c('hill_0', 'lambda_med'), points = 1)
 
-
+b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed')
 
 b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
 b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
@@ -378,17 +388,18 @@ b_s_full_pred = dw_dat_summ %>%
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(floor(min(log(dw_dat_summ$hill_0))), ceiling(max(log(dw_dat_summ$hill_0))), by = 0.25)
+
 S_breaks = log(c(25, 50, 75, 100, 125, 150))
 S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
 s_text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
 
 b_s_pred_plot = b_s_full_pred %>% 
   ggplot()+
-  geom_path(aes(x = log(hill_0), y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_path(aes(x = log(hill_0), y = .linpred, group = .draw), color = 'darkgrey', alpha = 0.5)+
   geom_point(data = dw_dat_summ, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
   geom_point(data = dw_dat_summ %>% summarise(hill_0 = mean(hill_0),
-                                              lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
-             aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
+  lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
+  aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
   scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
                      breaks = S_breaks,
                      labels = S_labels,
