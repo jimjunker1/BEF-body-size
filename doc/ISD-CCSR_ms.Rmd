@@ -66,6 +66,7 @@ library(brms)
 library(viridis)
 library(mgcv)
 library(hillR)
+library(ggeffects)
 library(marginaleffects)
 theme_set(theme_minimal(base_family = 'serif'))
 
@@ -151,13 +152,13 @@ dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = 
   left_join(H_summ, by = 'site_id')
 
 
-dw_dat_summ %>%
-  ggplot()+
-  geom_point(aes(x = lmbar_b, y = lb_m2, color = site_id), alpha = 0.5)+
-  geom_point(data = dw_dat_summ %>% 
-               summarise(lmbar_b = mean(lmbar_b, na.rm = TRUE),
-                         lb_m2 = mean(lb_m2, na.rm = TRUE), .by = 'site_id'), aes(y = lb_m2, x = lmbar_b, color = site_id), size = 4)+ 
-  scale_color_viridis(discrete = TRUE)
+# dw_dat_summ %>%
+#   ggplot()+
+#   geom_point(aes(x = lmbar_b, y = lb_m2, color = site_id), alpha = 0.5)+
+#   geom_point(data = dw_dat_summ %>% 
+#                summarise(lmbar_b = mean(lmbar_b, na.rm = TRUE),
+#                          lb_m2 = mean(lb_m2, na.rm = TRUE), .by = 'site_id'), aes(y = lb_m2, x = lmbar_b, color = site_id), size = 4)+ 
+#   scale_color_viridis(discrete = TRUE)
 
 rm("lambdas", "dw_dat", "dw_dat_temp") 
 ```
@@ -234,7 +235,7 @@ output =
       family = gaussian(link = 'identity'),
       iter = 3000,
       thin = 1,
-      file_refit = 'always',
+      file_refit = 'on_change',
       file = here("data/models/b_m"),
       control = list(adapt_delta = 0.99),
       chains = 4,
@@ -247,7 +248,7 @@ b_m_lm = readRDS(here("data/models/b_m.rds"))
 b_m_lm_int =fixef(b_m_lm)[1,'Estimate']
 b_m_lm_fix = fixef(b_m_lm)[2, 'Estimate']
 b_m_cond = conditional_effects(b_m_lm) %>% flatten %>% data.frame
-b_m_lm_pred = predict(b_m_lm, newdata = dw_dat_summ %>% select(site_id, lmbar_b_met))
+# b_m_lm_pred = predict(b_m_lm, newdata = dw_dat_summ %>% select(site_id, lmbar_b_met))
 
 b_m_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
@@ -276,7 +277,7 @@ b_m_pred_plot = b_m_pred %>%
                      breaks = M_breaks,
                      labels = M_labels,
                      limits = c(-0.38,7.6))+
-  scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
+  scale_y_continuous(name = expression("Biomass (mg "~m^-2*")"),
                      limits = c(7.675,16.22),
                      breaks = b_breaks,
                     labels = b_labels
@@ -306,6 +307,7 @@ output =
     )
 NM_met_bwt = readRDS(here("data/models/NM_met_bwt.rds"))
 # plot(conditional_effects(NM_met_bwt))
+# b_m_cond = conditional_effects(b_m_lm) %>% flatten %>% data.frame
 NM_met_bwt_int =fixef(NM_met_bwt)[1,'Estimate']
 
 
@@ -326,7 +328,7 @@ N_breaks = seq.int(round(min(dw_dat_summ$ln_tot, na.rm = TRUE)), 20, by= 3)#roun
 N_labels = c(format(exp(N_breaks[N_breaks <= 9]), scientific = FALSE, digits = 1), format(exp(N_breaks[N_breaks >9]), scientific = TRUE, digits = 2))
 
 NM_text_annotation = paste("italic('N ~')","~italic('M')^~-1")
-
+x_axis_label =paste0("$\\overline{M$sup{0.75}$}$","$sub{B weighed}$","$\\quad$", "(mg ","$ind^{-1})$")
 
 nm_theory_plot=
 dw_dat_summ %>% 
@@ -335,7 +337,7 @@ dw_dat_summ %>%
   geom_point(aes(x = lmbar_b_met, y = ln_tot, fill = site_id),shape = 21, color = 'darkgrey', alpha = 0.5)+
   geom_point(data = dw_dat_summ %>% summarise(lmbar_b_met = mean(lmbar_b_met, na.rm = TRUE), 
                                               ln_tot = mean(ln_tot, na.rm = TRUE), .by = 'site_id'), aes(x = lmbar_b_met, y = ln_tot, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = expression(over(,M^0.75)["B-weighed"]*"(mg "*ind^-1*")"),
+  scale_x_continuous(name = TeX(x_axis_label, output = 'character'),
                      breaks = M_breaks,
                      labels = M_labels,
                      limits = c(-0.38,7.6))+
@@ -371,48 +373,55 @@ output =
 
 b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
 bayes_R2(b_s_full_lmm)
+
 plot_predictions(b_s_full_lmm, condition = c('hill_0', 'lambda_med'), points = 1)
 
-b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed')
+# b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed')
+b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = dw_dat_summ %>% select(lambda_med), margin = 'marginalmeans', type = 'fixed')
+plot(b_m_marg, show_residuals = TRUE)
 
-b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
-b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
+
+b_s_lm_int =fixef(b_s_full_lmm)[1,'Estimate']
+b_s_lmm_fix = fixef(b_s_full_lmm)[3, 'Estimate']
 # b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
 
-b_s_full_pred = dw_dat_summ %>% 
-  data_grid(site_id = site_id,
-            hill_0 = hill_0,
-            lambda_med = lambda_med) %>% 
-  add_epred_draws(b_s_full_lmm, ndraws = 100, re_formula = NA)#~(1 + lambda_med |site_id))
+# b_s_full_pred = dw_dat_summ %>%
+#   data_grid(site_id = site_id,
+#             hill_0 = hill_0,
+#             lambda_med = lambda_med) %>% 
+#   add_epred_draws(b_s_full_lmm, ndraws = 100, re_formula = NA)#~(1 + lambda_med |site_id))
 
 b_breaks = seq.int(round(min(dw_dat_summ$lb_m2, na.rm = TRUE)), round(max(dw_dat_summ$lb_m2, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(floor(min(log(dw_dat_summ$hill_0))), ceiling(max(log(dw_dat_summ$hill_0))), by = 0.25)
 
-S_breaks = log(c(25, 50, 75, 100, 125, 150))
-S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
-s_text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
+lambda_breaks = c(-1.5, -2.0, -2.5, -3.0)
+lambda_labels = format(lambda_breaks, scientific = FALSE, digits = 2)
+lambda_text_annotation = paste0("\\lambda","$\\approx$",eval(round(b_s_lmm_fix,2)))
 
-b_s_pred_plot = b_s_full_pred %>% 
+b_lambda_pred_plot = b_m_marg %>% 
+  rename(lambda_med = x, lb_m2 = predicted) %>% 
   ggplot()+
-  geom_path(aes(x = log(hill_0), y = .linpred, group = .draw), color = 'darkgrey', alpha = 0.5)+
-  geom_point(data = dw_dat_summ, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
-  geom_point(data = dw_dat_summ %>% summarise(hill_0 = mean(hill_0),
+  geom_ribbon(aes(x = lambda_med, ymin = conf.low, ymax = conf.high), fill = 'grey', alpha = 0.5)+
+  geom_path(aes(x = lambda_med, y = lb_m2), color = 'darkgrey', linewidth = 1)+
+  geom_point(data = dw_dat_summ, aes(x = lambda_med, y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5)+
+  geom_point(data = dw_dat_summ %>% summarise(
+    lambda_med = mean(lambda_med, na.rm = TRUE),
   lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
-  aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
-                     breaks = S_breaks,
-                     labels = S_labels,
-                     limits = c(3.2,4.85))+
-  scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
+  aes(x = lambda_med, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 4)+
+  scale_x_continuous(name = TeX(paste0("\\lambda")),#, expression("Species richness ("*Hill["q=0"]*")"),
+                     breaks = lambda_breaks,
+                     labels = lambda_labels,
+                     limits = c(-3.1,-1.25))+
+  scale_y_continuous(name = expression("Biomass (mg "~m^-2~")"),
                      limits = c(7.675,16.22),
                      breaks = b_breaks,
                      labels = b_labels
   )+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = s_text_annotation, family = 'serif' )+
-  theme(legend.position = 'none');b_s_pred_plot
-saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(lambda_text_annotation, output = 'character'), family = 'serif' )+
+  theme(legend.position = 'none');b_lambda_pred_plot
+saveRDS(b_s_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
 
 b_s_resid%>% 
   ungroup %>% 
