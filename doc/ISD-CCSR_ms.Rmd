@@ -68,11 +68,14 @@ library(mgcv)
 library(hillR)
 library(ggeffects)
 library(marginaleffects)
+library(latex2exp)
 theme_set(theme_minimal(base_family = 'serif'))
 
 options(mc.cores = parallel::detectCores(),
         scipen = 5)
 rstan::rstan_options(auto_write = TRUE)
+source(here::here("R/helpers.R"))
+
 # read in the data for species richness across sites
 
 taxa_list = readRDS(here('data/taxa_list.rds'))
@@ -151,6 +154,55 @@ lambdas = readRDS(here("data/lambda_table.rds")) %>%
 dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = TRUE) %>% 
   left_join(H_summ, by = 'site_id')
 
+sampleParams <- readRDS(here("data/dat_2022_clauset.rds")) %>% ungroup %>%
+  select(site_id, sample_id, year, xmin_c = xmin_clauset, xmax) %>%
+  distinct %>% 
+  left_join(dw_dat_summ, by = c('sample_id', 'site_id')) 
+
+dat = sampleParams %>% 
+  # lambda = ..24
+  # xmin = ..4
+  # xmax = ..5
+  # n_tot = ..6
+    mutate(m_old = pmap_dbl(.,~pareto_expectation(lambda = ..24,
+                                                  xmin = ..4,
+                                                  xmax = ..5)),
+           m_est = pmap_dbl(.,~pareto_expectation(lambda = ..24,
+                                                  xmin = 0.0006,
+                                                  xmax = ..5)),
+           m_est_l = pmap_dbl(.,~pareto_expectation(lambda = ..25,
+                                                    xmin = 0.0006,
+                                                    xmax = ..5)),
+           m_est_u = pmap_dbl(.,~pareto_expectation(lambda = ..26,
+                                                    xmin = 0.0006,
+                                                    xmax = ..5)),
+           n_est = pmap_dbl(.,~estimate_pareto_N(n = ..6,
+                                           lambda = ..24,
+                                           xmin = ..4,
+                                           xmin2 = 0.0006,
+                                           xmax = ..5)),
+           n_est_l = pmap_dbl(.,~estimate_pareto_N(n = ..6,
+                                                   lambda = ..25,
+                                                   xmin = ..4,
+                                                   xmin2 = 0.0006,
+                                                   xmax = ..5)),
+           n_est_u = pmap_dbl(.,~estimate_pareto_N(n = ..6,
+                                                   lambda = ..26,
+                                                   xmin = ..4,
+                                                   xmin2 = 0.0006,
+                                                   xmax = ..5)),
+           b_old = m_old * n_tot,
+           b_est = m_est * n_est,
+           b_est_l = m_est_l * n_est_l,
+           b_est_u = m_est_u * n_est_u,
+           b_diff = b_est - b_m2,
+           b_diff_l = b_est_l - b_m2,
+           b_diff_u = b_est_u -b_m2,
+           ln_est = log(n_est),
+           lmbar_n_est = log(m_est),
+           lmbar_n_est_met = log(m_est^0.75))
+
+
 
 # dw_dat_summ %>%
 #   ggplot()+
@@ -160,7 +212,7 @@ dw_dat_summ = merge(dw_dat_temp, lambdas,  by = c('site_id','sample_id'), all = 
 #                          lb_m2 = mean(lb_m2, na.rm = TRUE), .by = 'site_id'), aes(y = lb_m2, x = lmbar_b, color = site_id), size = 4)+ 
 #   scale_color_viridis(discrete = TRUE)
 
-rm("lambdas", "dw_dat", "dw_dat_temp") 
+rm("lambdas", "dw_dat", "dw_dat_temp", "sampleParams") 
 ```
 
 ```{r richness models}
@@ -172,19 +224,46 @@ output =
       family = gaussian(link = 'identity'),
       iter = 1000,
       thin = 1,
-      file_refit = 'on_change',
+      file_refit = 'always',
       file = here("data/models/b_s"),
       chains = 4,
       cores = 4,
-      seed = 1312
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
       )
     )
 
+output = 
+  capture.output(
+    brm(
+      bf(lb_m2 ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
+      data = dw_dat_summ,
+      family = gaussian(link = 'identity'),
+      iter = 2000,
+      thin = 1,
+      file_refit = 'always',
+      file = here("data/models/b_s_full"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+      )
+    )
+
+b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
+
 b_s_lm = readRDS(here("data/models/b_s.rds"))
+bayes_R2(b_s_lm)
+bayes_factor(b_s_full_lmm, b_s_lm)
 b_s_cond = conditional_effects(b_s_lm) %>% flatten %>% data.frame
 b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
-b_s_lm_fix = fixef(b_s_lm)[2, 'Estimate']
+b_s_lm_fix = fixef(b_s_full_lmm)[2, 'Estimate']
 b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
+
+perc_pos_hill = ecdf(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')))
+1 - perc_pos_hill(0)
+
 
 b_s_pred = dw_dat_summ %>% 
   data_grid(site_id = site_id,
@@ -328,7 +407,7 @@ N_breaks = seq.int(round(min(dw_dat_summ$ln_tot, na.rm = TRUE)), 20, by= 3)#roun
 N_labels = c(format(exp(N_breaks[N_breaks <= 9]), scientific = FALSE, digits = 1), format(exp(N_breaks[N_breaks >9]), scientific = TRUE, digits = 2))
 
 NM_text_annotation = paste("italic('N ~')","~italic('M')^~-1")
-x_axis_label =paste0("$\\overline{M$sup{0.75}$}$","$sub{B weighed}$","$\\quad$", "(mg ","$ind^{-1})$")
+x_axis_label =paste0("$\\bar{M}", "^{0.75}$")#^{0.75}}$")#_{B weighted}$","$sub{B weighed}$","$\\quad$", "(mg ","$ind^{-1})$")
 
 nm_theory_plot=
 dw_dat_summ %>% 
@@ -337,7 +416,7 @@ dw_dat_summ %>%
   geom_point(aes(x = lmbar_b_met, y = ln_tot, fill = site_id),shape = 21, color = 'darkgrey', alpha = 0.5)+
   geom_point(data = dw_dat_summ %>% summarise(lmbar_b_met = mean(lmbar_b_met, na.rm = TRUE), 
                                               ln_tot = mean(ln_tot, na.rm = TRUE), .by = 'site_id'), aes(x = lmbar_b_met, y = ln_tot, fill = site_id), color = 'black', shape = 21, size = 4)+
-  scale_x_continuous(name = TeX(x_axis_label, output = 'character'),
+  scale_x_continuous(name = expression(~bar(M^0.75)["Biomass weighted"]~"(mg "*ind^-1*")"),
                      breaks = M_breaks,
                      labels = M_labels,
                      limits = c(-0.38,7.6))+
@@ -372,16 +451,16 @@ output =
     )
 
 b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
-bayes_R2(b_s_full_lmm)
+bayes_R2(b_s_full_lmm)[1]
 
 plot_predictions(b_s_full_lmm, condition = c('hill_0', 'lambda_med'), points = 1)
 
 # b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed')
 b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = dw_dat_summ %>% select(lambda_med), margin = 'marginalmeans', type = 'fixed')
-plot(b_m_marg, show_residuals = TRUE)
+# plot(b_m_marg, show_residuals = TRUE)
 
 
-b_s_lm_int =fixef(b_s_full_lmm)[1,'Estimate']
+# b_s_lm_int =fixef(b_s_full_lmm)[1,'Estimate']
 b_s_lmm_fix = fixef(b_s_full_lmm)[3, 'Estimate']
 # b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
 
@@ -397,7 +476,7 @@ b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 
 lambda_breaks = c(-1.5, -2.0, -2.5, -3.0)
 lambda_labels = format(lambda_breaks, scientific = FALSE, digits = 2)
-lambda_text_annotation = paste0("\\lambda","$\\approx$",eval(round(b_s_lmm_fix,2)))
+lambda_text_annotation = paste0("(ln(B) | S)","$\\approx$",eval(round(b_s_lmm_fix,2)),"$\\times$","\\lambda")
 
 b_lambda_pred_plot = b_m_marg %>% 
   rename(lambda_med = x, lb_m2 = predicted) %>% 
@@ -420,20 +499,97 @@ b_lambda_pred_plot = b_m_marg %>%
   )+
   scale_fill_viridis(discrete = TRUE)+
   annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(lambda_text_annotation, output = 'character'), family = 'serif' )+
+  annotate('text', x = -Inf, y = Inf, vjust = 3, hjust= 0, parse = TRUE, label = TeX(paste0("Full model: $r^2$","=",round(bayes_R2(b_s_full_lmm)[1],2)), , output = 'character'), family = 'serif')+
   theme(legend.position = 'none');b_lambda_pred_plot
-saveRDS(b_s_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
+saveRDS(b_lambda_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
 
-b_s_resid%>% 
-  ungroup %>% 
-  summarise(.residual_med = median(.residual),
-            lambda_med = median(lambda_med), .by = c(site_id, sample_id)) %>% 
+# b_s_resid%>% 
+#   ungroup %>% 
+#   summarise(.residual_med = median(.residual),
+#             lambda_med = median(lambda_med), .by = c(site_id, sample_id)) %>% 
+#   ggplot()+
+#   geom_point(aes(x = lambda_med, y = .residual_med, fill = site_id), color = 'darkgrey', shape = 21, alpha = 0.5 )+
+#   geom_point(data = . %>% summarise(.residual_med = mean(.residual_med),
+#                                     lambda_med = mean(lambda_med), .by = site_id),
+#              aes(x = lambda_med, y = .residual_med, fill = site_id), color = 'black', shape = 21, size = 4)+
+#   scale_fill_viridis(discrete = TRUE)+
+#   theme(legend.position = 'none')
+```
+
+```{r pareto extrapolation}
+
+output = 
+  capture.output(
+    brm(bf(ln_est ~lmbar_n_est_met + (1 + lmbar_n_est_met|site_id)),
+        data = dat,
+        family = gaussian(link = 'identity'),
+        iter = 2000,
+        thin = 1,
+        file_refit = 'on_change',
+        file = here("data/models/NM_est_met_nwt"),
+        control = list(adapt_delta = 0.99),
+        chains = 4, cores = 4,
+        seed = 1312
+        )
+    )
+NM_est_met_nwt = readRDS(here("data/models/NM_est_met_nwt.rds"))
+NM_est_met_nwt_cond = conditional_effects(NM_est_met_nwt) %>% flatten %>% data.frame
+
+output = 
+  capture.output(
+    brm(bf(ln_tot~lmbar_n_met + (1 + lmbar_n_met|site_id)),
+        data = dw_dat_summ,
+        family = gaussian(link = 'identity'),
+        iter = 2000,
+        thin = 1,
+        file_refit = 'on_change',
+        file = here("data/models/NM_met_nwt"),
+        control = list(adapt_delta = 0.99),
+        chains = 4, cores = 4,
+        seed = 1312
+        )
+    )
+NM_met_nwt = readRDS(here("data/models/NM_met_nwt.rds"))
+NM_met_nwt_cond = conditional_effects(NM_met_nwt) %>% flatten %>% data.frame
+
+
+NM_est_met_nwt_int = mean(c(min(dat$ln_est),max(dat$ln_tot)))
+NM_est_met_nwt_theory = data.frame(lmbar_n_est_met = seq(min(dat$lmbar_n_est_met), max(dat$lmbar_n_met), length.out = 50)) %>%
+  mutate(pred = NM_est_met_nwt_int + lmbar_n_est_met*-1)
+
+M_breaks = log(c(0.001,0.01,0.1,1,10,100,1000,10000))
+M_labels = exp(M_breaks)
+
+N_breaks = seq.int(round(min(dw_dat_summ$ln_tot, na.rm = TRUE)), 33, by= 3)#round(max(dw_dat_summ$ln_tot, na.rm = TRUE)20), by = 3)
+N_labels = c(format(exp(N_breaks[N_breaks <= 9]), scientific = FALSE, digits = 1), format(exp(N_breaks[N_breaks >9]), scientific = TRUE, digits = 2))
+
+n_m_extrapolate_plot = 
+dat %>% 
   ggplot()+
-  geom_point(aes(x = lambda_med, y = .residual_med, fill = site_id), color = 'darkgrey', shape = 21, alpha = 0.5 )+
-  geom_point(data = . %>% summarise(.residual_med = mean(.residual_med),
-                                    lambda_med = mean(lambda_med), .by = site_id),
-             aes(x = lambda_med, y = .residual_med, fill = site_id), color = 'black', shape = 21, size = 4)+
+  geom_ribbon(data = NM_est_met_nwt_cond,aes(x = lmbar_n_est_met, ymin = lower__, ymax = upper__), fill = 'darkgreen', alpha = 0.5)+
+  geom_ribbon(data = NM_met_nwt_cond,aes(x = lmbar_n_met, ymin = lower__, ymax = upper__), fill = 'grey', alpha = 0.5)+
+  geom_line(data = NM_est_met_nwt_cond,aes(x = lmbar_n_est_met, y = estimate__), color = 'darkgreen', linewidth = 1)+
+  geom_line(data = NM_met_nwt_cond,aes(x = lmbar_n_met, y = ln_tot), color = 'grey', linewidth = 1)+
+  geom_line(data = NM_est_met_nwt_theory, aes(x = lmbar_n_est_met, y = pred))+
+  geom_point(aes(x = lmbar_n_met, y = ln_tot, fill = site_id), color = 'grey', alpha = 0.5, shape = 21)+
+  geom_point(aes(x = log(m_est^0.75), y = log(n_est), fill = site_id), color = 'grey', alpha = 0.5, shape = 22)+
+  geom_point(data = dat %>% summarise(lmbar_n_est_met = mean(lmbar_n_est_met),
+                                      ln_est = mean(ln_est),
+                                      ,.by = 'site_id'),
+             aes(x = lmbar_n_est_met, y = ln_est, fill = site_id), shape = 22, size = 4)+
+  geom_point(data = dat %>% summarise(lmbar_n_met = mean(lmbar_n_met),
+                                      ln_tot = mean(ln_tot), .by = 'site_id'), aes(x = lmbar_n_met, y = ln_tot, fill = site_id), shape = 21, size = 4)+
+  scale_x_continuous(name = expression(~bar(M^0.75)~"(mg "*ind^-1*")"),
+                     breaks = M_breaks,
+                     labels = M_labels,
+                     limits = c(-5.5,7.8))+
+  scale_y_continuous(name = expression("Abundance (individuals    "~m^-2~")"),
+                     breaks = N_breaks,
+                     labels = N_labels,
+                     limits = c(0,27))+
   scale_fill_viridis(discrete = TRUE)+
-  theme(legend.position = 'none')
+  theme(legend.position = 'none');n_m_extrapolate_plot 
+saveRDS(n_m_extrapolate_plot, here("doc/plots/nm_extrapolate_plot.rds"))
 ```
 
 ```{r residual models}
