@@ -4,7 +4,7 @@ here::i_am("R/01_wrangle-data.R")
 cat("Data stores were updated",as.character(readRDS(here::here("data/date_updated.rds"))))
 ## should we update all of the data stores?
 update = FALSE
-rerun = TRUE
+rerun = FALSE
 source(here::here("R/helpers.R"))
  
 # get sample and site level biodiversity data
@@ -462,63 +462,63 @@ saveRDS(taxa_list, here('data/taxa_list.rds'))
 }
 
 ###
-pareto_variance <- function(lambda, x_min, x_max, tol = 1e-6) {
-  
-  if (abs(lambda + 1) < tol || abs(lambda + 2) < tol || abs(lambda + 3) < tol) {
-    stop("lambda is too close to a special case (-1, -2, -3). Explicit special-case handling needed.")
-  }
-  
-  E_M <- ((lambda + 1) / (lambda + 2)) * 
-    (x_max^(lambda + 2) - x_min^(lambda + 2)) /
-    (x_max^(lambda + 1) - x_min^(lambda + 1))
-  
-  E_M2 <- ((lambda + 1) / (lambda + 3)) * 
-    (x_max^(lambda + 3) - x_min^(lambda + 3)) /
-    (x_max^(lambda + 1) - x_min^(lambda + 1))
-  
-  var_M <- E_M2 - E_M^2
-  
-  return(var_M)
-}
 
-# Example explicitly tested
-lambda_values <- c(-1.01, -1.0001, -2.001, -2.000001, -3.1)
-sapply(lambda_values, function(lam) pareto_variance(lam, 1, 10))
-
-
-lambda <- -1.5
-x_min <- 1
-x_max <- 10
-N_total <- 1000
-
-# Calculate normalization constant c explicitly
-c <- N_total * (lambda + 1) / (x_max^(lambda + 1) - x_min^(lambda + 1))
-
-# Explicit analytical function to calculate Var(N)
-calc_abundance_variance <- function(lambda, c, x_min, x_max) {
-  term1 <- (lambda + 1) / (2 * lambda + 1)
-  numerator <- x_max^(2 * lambda + 1) - x_min^(2 * lambda + 1)
-  denominator <- x_max^(lambda + 1) - x_min^(lambda + 1)
-  varN <- c^2 * (term1 * numerator / denominator - 1)
-  return(varN)
-}
-
-# Compute Var(N) explicitly
-variance_N <- calc_abundance_variance(lambda, c, x_min, x_max)
-
-cat("Explicitly calculated variance in abundances (N):", variance_N, "\n")
 
 
 
 ## extrapolate the es
-sampleParams <- readRDS(here("data/dat_clauset_xmins.rds")) %>% ungroup %>%
-  select(site_id, sample_id, year, xmin, xmin_c = xmin_clauset, xmax, gpp, gpp_sd, mean_om, sd_om, mat = mean, dw, no_m2) %>%
-  mutate(b = dw * no_m2) %>%
-  mutate(dw_mean = weighted.mean(dw, no_m2), .by = c(site_id, sample_id)) %>%
-  summarise(no_m2 = sum(no_m2),
-            b = sum(b), .by = c(site_id, sample_id, year, dw_mean, xmin, xmin_c, xmax, gpp, gpp_sd, mean_om, sd_om, mat))
+sampleParams <- readRDS(here("data/dat_2022_clauset.rds")) %>% ungroup %>%
+  select(site_id, sample_id, year, xmin_c = xmin_clauset, xmax) %>%
+  distinct %>% 
+  left_join(dw_dat_summ, by = c('sample_id', 'site_id')) 
 
-lambdas <- readRDS(here("data/lambdas.rds"))
+dat = sampleParams %>% 
+  # lambda = ..24
+  # xmin = ..4
+  # xmax = ..5
+  # n_tot = ..6
+    mutate(m_old = pmap_dbl(.,~pareto_expectation(lambda = ..24,
+                                                  xmin = ..4,
+                                                  xmax = ..5)),
+           m_est = pmap_dbl(.,~pareto_expectation(lambda = ..24,
+                                                  xmin = 0.0006,
+                                                  xmax = ..5)),
+           m_est_l = pmap_dbl(.,~pareto_expectation(lambda = ..25,
+                                                    xmin = 0.0006,
+                                                    xmax = ..5)),
+           m_est_u = pmap_dbl(.,~pareto_expectation(lambda = ..26,
+                                                    xmin = 0.0006,
+                                                    xmax = ..5)),
+           n_est = pmap_dbl(.,~estimate_pareto_N(n = ..6,
+                                           lambda = ..24,
+                                           xmin = ..4,
+                                           xmin2 = 0.0006,
+                                           xmax = ..5)),
+           n_est_l = pmap_dbl(.,~estimate_pareto_N(n = ..6,
+                                                   lambda = ..25,
+                                                   xmin = ..4,
+                                                   xmin2 = 0.0006,
+                                                   xmax = ..5)),
+           n_est_u = pmap_dbl(.,~estimate_pareto_N(n = ..6,
+                                                   lambda = ..26,
+                                                   xmin = ..4,
+                                                   xmin2 = 0.0006,
+                                                   xmax = ..5)),
+           b_old = m_old * n_tot,
+           b_est = m_est * n_est,
+           b_est_l = m_est_l * n_est_l,
+           b_est_u = m_est_u * n_est_u,
+           b_diff = b_est - b_m2,
+           b_diff_l = b_est_l - b_m2,
+           b_diff_u = b_est_u -b_m2)
+
+dat %>%
+  ggplot()+
+  geom_line(data = NM_met_bwt_pred, aes(x = lmbar_b_met, y = pred))+
+  geom_path(aes(x = ))
+  geom_point(aes(x = lmbar_b, y = ln_tot), shape = 21)+
+  geom_point(aes(x = log(m_est), y = log(n_est)), shape = 22)
+
 
 # ARIKLambdas = lambdas %>% 
 #   filter(site_id == 'ARIK',
@@ -589,3 +589,50 @@ lambdas <- readRDS(here("data/lambdas.rds"))
 # dat$b[1]
 # 
 # n_est * m_est
+
+
+pareto_variance <- function(lambda, x_min, x_max, tol = 1e-6) {
+  
+  if (abs(lambda + 1) < tol || abs(lambda + 2) < tol || abs(lambda + 3) < tol) {
+    stop("lambda is too close to a special case (-1, -2, -3). Explicit special-case handling needed.")
+  }
+  
+  E_M <- ((lambda + 1) / (lambda + 2)) * 
+    (x_max^(lambda + 2) - x_min^(lambda + 2)) /
+    (x_max^(lambda + 1) - x_min^(lambda + 1))
+  
+  E_M2 <- ((lambda + 1) / (lambda + 3)) * 
+    (x_max^(lambda + 3) - x_min^(lambda + 3)) /
+    (x_max^(lambda + 1) - x_min^(lambda + 1))
+  
+  var_M <- E_M2 - E_M^2
+  
+  return(var_M)
+}
+
+# Example explicitly tested
+lambda_values <- c(-1.01, -1.0001, -2.001, -2.000001, -3.1)
+sapply(lambda_values, function(lam) pareto_variance(lam, 1, 10))
+
+
+lambda <- -1.5
+x_min <- 1
+x_max <- 10
+N_total <- 1000
+
+# Calculate normalization constant c explicitly
+c <- N_total * (lambda + 1) / (x_max^(lambda + 1) - x_min^(lambda + 1))
+
+# Explicit analytical function to calculate Var(N)
+calc_abundance_variance <- function(lambda, c, x_min, x_max) {
+  term1 <- (lambda + 1) / (2 * lambda + 1)
+  numerator <- x_max^(2 * lambda + 1) - x_min^(2 * lambda + 1)
+  denominator <- x_max^(lambda + 1) - x_min^(lambda + 1)
+  varN <- c^2 * (term1 * numerator / denominator - 1)
+  return(varN)
+}
+
+# Compute Var(N) explicitly
+variance_N <- calc_abundance_variance(lambda, c, x_min, x_max)
+
+cat("Explicitly calculated variance in abundances (N):", variance_N, "\n")
