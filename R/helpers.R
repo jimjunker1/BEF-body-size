@@ -13,7 +13,8 @@ library(brms)
 library(ubms)
 library(vegan)
 i_am("R/helpers.R")
-
+update = FALSE
+rerun = FALSE
 # directory
 NEON_db_dir = sprintf("C:/Users/%s/OneDrive - UNT System/Projects/database-files",
                       Sys.info()[['user']])
