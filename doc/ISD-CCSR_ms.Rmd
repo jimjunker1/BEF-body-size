@@ -261,8 +261,9 @@ b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
 b_s_lm_fix = fixef(b_s_full_lmm)[2, 'Estimate']
 b_s_lm_pred = predict(b_s_lm, newdata = dw_dat_summ %>% select(site_id, hill_0))
 
-perc_pos_hill = ecdf(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')))
+perc_pos_hill = ecdf(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')$b_loghill_0))
 1 - perc_pos_hill(0)
+quantile(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')$b_loghill_0), c(0.025, 0.975))
 
 
 b_s_pred = dw_dat_summ %>% 
