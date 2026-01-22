@@ -72,8 +72,14 @@ if(!update){
   cat(paste0("Data was last updated on ",date_updated))
 }
 ### --- helper functions ---###
-#'
-#'
+#'  @title pareto_expectation
+#'  @description
+#'  This function estimates the mean body size, or expectation of a community/sample 
+#'  that is assumed to follow a Pareto distribution with a given rate exponent, lambda,
+#'  and designated minimum and maximum body sizes, xmin and xmax respectively. This function
+#'  is useful for estimating the mean body size from sampled data with known sampling biases, 
+#'  in this case, known undersampling of small body sizes.
+#'  
 #'
 pareto_expectation = function(lambda, xmin, xmax){
   if(lambda == -1) {
@@ -90,8 +96,10 @@ pareto_expectation = function(lambda, xmin, xmax){
   }
 }
 
-#'
-#'
+#'  @title estimate_pareto_N
+#'  @description
+#'  This function extrapolates the community abundance, N, from a Pareto distributed 
+#'  
 #'
 estimate_pareto_N = function(n, lambda, xmin, xmin2, xmax){
   lambdaPlus = lambda + 1

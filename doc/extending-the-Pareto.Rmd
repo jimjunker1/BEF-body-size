@@ -1,0 +1,91 @@
+---
+title: "extending-the-Pareto"
+output: html_document
+---
+
+Background
+-----
+
+1. Mass $m$ follows a truncated Pareto PDF as defined by White et al. 2008:
+
+$$f(m) = \frac{(\lambda + 1)m^{\lambda}}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}$$
+
+2. We observed $n$ individuals sampled in the interval [$m_{min}$,$m_{max}$]. 
+
+3. We want to estimate the new total expected abundance, $N_{new}$, in the extended interval [$m_{min2}$,$m_{max}$], where $m_{min2} \leq m_{min}$
+
+Deriving $N_{new}$ using PDF normalization
+-----
+
+1. Define the total count in [$m_{min}$,$m_{max}$] as the integral of a density count function, $N(m) = cm^{\lambda}$:
+
+$$ n = \int_{m_{min}}^{m_{max}} cm^{\lambda} dm$$
+where, $c$ is the density normalizer.
+
+2. Evaluate the integral:
+
+$$ n = c \cdot \frac{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}{\lambda + 1} \Rightarrow c = n \frac{\lambda + 1}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}$$
+
+3. The expected number in [$m_{min2}$,$m_{max}$] is:
+
+$$ N_{new} = \int_{m_{min2}}^{m_{max}} cm^{\lambda} dm = c \cdot \frac{m_{max}^{\lambda + 1} - m_{min2}^{\lambda + 1}}{\lambda + 1}$$
+
+4. Substitute $c$ from step 2:
+
+$$N_{new} = [n \frac{\lambda + 1}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}] \cdot \frac{m_{max}^{\lambda + 1} - m_{min2}^{\lambda + 1}}{\lambda + 1}$$
+which simplifies to:
+
+$$N_{new} = n \cdot \frac{m_{max}^{\lambda + 1} - m_{min2}^{\lambda + 1}}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}$$
+
+Caveats and assumptions
+------
+
+- This is the expected count if we extrapolate the Pareto function outside the [$m_{min}$,$m_{max}$] range, this assumed that the $\lambda$ fit is valid below this range. I think we are justified in this assumption if we keep it to a reasonable $m_{min2}$.
+
+Application
+------
+
+Here, given the assumptions above, we want to apply this to undersampled data. Moving forward, I suggest we take the following approach. 
+
+1. We have a sample of $N_{orig}$ individual masses, *$M$*, within the range [$m_{orig}$,$m_{max}$]. We know there is some undersampling of individuals at some mass, $m_{cutoff}$.
+
+2. We estimate $m_{cutoff}$ with `estimate_xmin()` in the `powRlaw` package.
+
+3. This leaves us a new sample of $N_{cutoff}$ individuals masses, *$M_{cutoff}$*, within the new range, [$m_{cutoff}$, $m_{max}$]. 
+
+4. We apply the above procedure to estimate $N_{new}$, which is the estimated abundance within the range [$m_{orig}$, $m_{max}$], corrected for undersampling.
+
+5. First, we estimate $\lambda$ based on the *$M_{cutoff}$* sample in the range [$m_{cutoff}$,$m_{max}$].
+
+6. Then, we have the measured abundance in the cutoff interval, $N_{cutoff}$, that we can put into the equation above to estimate $N_{new}$ as:
+
+$$N_{new} = N_{cutoff} \cdot \frac{m_{max}^{\lambda + 1} - m_{cutoff}^{\lambda + 1}}{m_{max}^{\lambda + 1} - m_{orig}^{\lambda + 1}}$$
+
+7. It is possible that we could add this into `isdBayes` to allow incorporating the uncertainty in $\lambda$ and $m_{cutoff}$ to get uncertainty in the $N_{new}$. Within a sample, $N_{cutoff}$ is "known", and I think we would have to think more about how these are distributed, but as an example if we could use bootstrapping to define the distribution of $m_{cutoff} \sim N(\mu_{m_{cutoff}}, \sigma_{m_{cutoff}})$ and if similarly we have $\lambda \sim N(\mu_{\lambda}, \sigma_{\lambda})$ we should be able to generate a posterior for this estimate. I know this is likely missing some important information as $m_{cutoff}$ and $\lambda$ are not really independent, but this could be a way forward for now??? Or maybe we just incorporate the $\lambda$ uncertainty for the time being?
+
+More detail on moving from PDF to counts
+----
+
+<details>
+
+1. The PDF as we define it above
+
+$$f(m) = \frac{(\lambda + 1)m^{\lambda}}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}$$
+
+is, by definition, equal to 1 in the interval [$m_{min}$,$m_{max}$],
+
+$$ \int_{m_{min}}^{m_{max}} f(m) =  1 $$
+
+2. So, if we have a sample size that is drawn from this distribution as we define it, i.e., $N_{cutoff}$, this is the same as:
+
+$$ \frac{dN}{dm} = n f(m) = n \cdot \frac{(\lambda + 1)m^{\lambda}}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}$$
+
+3. This allows us to define the normalization constant, $c$ as we do above, by factoring out everything that is constant with respect to mass:
+
+$$c = n \cdot \frac{(\lambda + 1)}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}}$$
+
+such that our total sample, i.e., $N_{cutoff}$, integrated over [$m_{min}$,$m_{max}$] is:
+
+$$N_{cutoff} = \int_{m_{min}}^{m_{max}} c m^{\lambda} dm$$
+
+<\details>

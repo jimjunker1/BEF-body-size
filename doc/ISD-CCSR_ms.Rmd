@@ -104,7 +104,7 @@ H_summ = H_dat %>%
 dw_dat = readRDS(here('data/dat_2022_clauset.rds')) %>% 
   ungroup %>% 
   #clean to relevant columns for sample summaries
-  select(dw, no_m2, site_id, collect_date, sample_id) %>% 
+  select(dw, no_m2, site_id, collect_date, sample_id, log_gpp = "log_gpp_s", log_om = "log_om_s", mat_s) %>% 
   mutate(collect_date = as.Date(collect_date),
          year = year(collect_date),
          month = month(collect_date),
@@ -132,6 +132,9 @@ dw_dat_temp = dw_dat %>%
             lmbar_b = log(mbar_b),
             b_m2 = sum(b_sum),
             lb_m2 = log(b_m2),
+            log_gpp = unique(log_gpp),
+            log_om = unique(log_om),
+            mat_s = unique(mat_s),
             m_max = max(dw, na.rm = TRUE),
             .by = c('site_id','sample_id')) %>% 
   mutate(across(all_of(c("ln_tot", "lmbar_n_met", "lmbar_b_met", "lmbar_n", "lmbar_b")), ~as.numeric(scale(.)), .names  = "{.col}_s"))#%>% 
@@ -169,28 +172,28 @@ dat = sampleParams %>%
                                                   xmin = ..4,
                                                   xmax = ..5)),
            m_est = pmap_dbl(.,~pareto_expectation(lambda = ..24,
-                                                  xmin = 0.0006,
+                                                  xmin = 0.0026,
                                                   xmax = ..5)),
            m_est_l = pmap_dbl(.,~pareto_expectation(lambda = ..25,
-                                                    xmin = 0.0006,
+                                                    xmin = 0.0026,
                                                     xmax = ..5)),
            m_est_u = pmap_dbl(.,~pareto_expectation(lambda = ..26,
-                                                    xmin = 0.0006,
+                                                    xmin = 0.0026,
                                                     xmax = ..5)),
            n_est = pmap_dbl(.,~estimate_pareto_N(n = ..6,
                                            lambda = ..24,
                                            xmin = ..4,
-                                           xmin2 = 0.0006,
+                                           xmin2 = 0.0026,
                                            xmax = ..5)),
            n_est_l = pmap_dbl(.,~estimate_pareto_N(n = ..6,
                                                    lambda = ..25,
                                                    xmin = ..4,
-                                                   xmin2 = 0.0006,
+                                                   xmin2 = 0.0026,
                                                    xmax = ..5)),
            n_est_u = pmap_dbl(.,~estimate_pareto_N(n = ..6,
                                                    lambda = ..26,
                                                    xmin = ..4,
-                                                   xmin2 = 0.0006,
+                                                   xmin2 = 0.0026,
                                                    xmax = ..5)),
            b_old = m_old * n_tot,
            b_est = m_est * n_est,
@@ -225,7 +228,7 @@ output =
       family = gaussian(link = 'identity'),
       iter = 1000,
       thin = 1,
-      file_refit = 'always',
+      file_refit = 'on_change',
       file = here("data/models/b_s"),
       chains = 4,
       cores = 4,
@@ -242,7 +245,7 @@ output =
       family = gaussian(link = 'identity'),
       iter = 2000,
       thin = 1,
-      file_refit = 'always',
+      file_refit = 'on_change',
       file = here("data/models/b_s_full"),
       control = list(adapt_delta = 0.99),
       chains = 4,
@@ -318,7 +321,7 @@ output =
       thin = 1,
       file_refit = 'on_change',
       file = here("data/models/b_m"),
-      control = list(adapt_delta = 0.99),
+      control = list(adapt_delta = 0.999),
       chains = 4,
       cores = 4,
       seed = 1312
@@ -617,7 +620,7 @@ NM_met_bwt_pred %>%
 NM_met_bwt_pred %>% 
   left_join(dw_dat_summ) %>% 
   ggplot()+
-  geom_point(aes(x = gpp, y = resid_theory))
+  geom_point(aes(x = log_gpp, y = resid_theory))
 
 
 output = capture.output(
