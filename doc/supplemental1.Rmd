@@ -15,13 +15,14 @@ institute:
   - unt: Dept. of Biological Sciences, University of North Texas, Denton, TX USA
   - aeri: Advanced Environmental Research Institute, University of North Texas, Denton, TX USA
 output:
-  word_document:
-    reference_docx: working_docx_template.docx
-    toc: no
-    pandoc_args:
-      - '--lua-filter=scholarly-metadata.lua'
-      - '--lua-filter=author-info-blocks.lua'
-      - '--filter=pandoc-crossref.exe'
+  html_document:
+  # word_document:
+  #   reference_docx: working_docx_template.docx
+  #   toc: no
+  #   pandoc_args:
+  #     - '--lua-filter=scholarly-metadata.lua'
+  #     - '--lua-filter=author-info-blocks.lua'
+  #     - '--filter=pandoc-crossref.exe'
 header-includes:
 - \usepackage{lineno}
 - \usepackage{amsmath}
