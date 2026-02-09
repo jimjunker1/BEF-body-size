@@ -206,7 +206,8 @@ dat = sampleParams %>%
   mutate(n_mean = mean(n_est), .by = 'site_id')
 
 dat_summ = dat %>% 
-  summarise(across(c(n_tot, ln_tot, mbar_n, mbar_n_met, mbar_b, mbar_b_met, lmbar_n, lmbar_n_met, lmbar_b, lmbar_b_met, b_m2, lb_m2, m_max, ln_tot_s, lmbar_n_met_s,lmbar_b_met_s, lmbar_n_s, lmbar_b_s, log_gpp_s, log_om_s, mat_s, lambda_med, lower_lambda, upper_lambda, n_est, b_old, b_est, ln_est), mean), .by = "site_id")
+  summarise(across(c(n_tot, ln_tot, mbar_n, mbar_n_met, mbar_b, mbar_b_met, lmbar_n, lmbar_n_met, lmbar_b, lmbar_b_met, b_m2, lb_m2, m_max, ln_tot_s, lmbar_n_met_s,lmbar_b_met_s, lmbar_n_s, lmbar_b_s, log_gpp_s, log_om_s, mat_s, lambda_med, lower_lambda, upper_lambda, n_est, b_old, b_est, ln_est), mean),
+            hill_0 = unique(hill_0), .by ='site_id')
 
 # dw_dat_summ %>%
 #   ggplot()+
@@ -221,17 +222,19 @@ rm("lambdas", "dw_dat", "dw_dat_temp", "sampleParams")
 
 ```{r environmental models}
 
-dat %>%
+
+dat_summ %>%
   ggplot()+
-  geom_point(aes(y = log(n_est), x = log(hill_0)))
+  geom_point(aes(y = log(b_est), x = log(hill_0), color = site_id))+
+  geom_smooth(aes(y = log(b_est), x = log(hill_0)), method = 'lm')
 # 
-# dat %>% 
-#   ggplot()+
-#   geom_point(aes(x = log_om_s, y = lb_m2, color = site_id))
-# 
-# dat %>% 
-#   ggplot() +
-#   geom_point(aes(x = mat_s, y = lb_m2, color = site_id))
+dat %>%
+  ggplot() +
+  geom_point(aes(x = mat_s, y = log(b_est), color = site_id))
+
+dat %>%
+  ggplot() +
+  geom_point(aes(x = lmbar_n_est, y = ln_est, color = site_id))
 # 
 # dat %>% 
 #   ggplot()+
@@ -318,7 +321,7 @@ b_s_lm_fix = fixef(b_s_full_lmm)[2, 'Estimate']
 b_s_lm_pred = predict(b_s_lm, newdata = dat %>% select(site_id, hill_0))
 
 perc_pos_hill = ecdf(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')$b_loghill_0))
-1 - perc_pos_hill(0)
+1 - perc_pos_hill(0.001)
 quantile(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')$b_loghill_0), c(0.025, 0.975))
 
 
@@ -690,6 +693,45 @@ output =
         )
   )
 
+
+output = 
+  capture.output(
+    brm(
+      bf(log(b_est) ~ log(hill_0) + (1 |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 1000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/best_s"),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+      )
+    )
+
+output = 
+  capture.output(
+    brm(
+      bf(log(b_est) ~ lambda_med + (1 |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 1000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/best_lambda"),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+      )
+    )
+
+best_lambda_lmm = readRDS(here("data/models/best_lambda.rds"))
+best_s_lmm = readRDS(here("data/models/best_s.rds"))
+
+
 ```
 
 ```{r residual models}
@@ -846,7 +888,8 @@ lmbar_n_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_n_met) + mea
 dat %>% 
   group_by(site_id) %>% 
 data_grid(lmbar_n_met = seq_range(lmbar_n_met, n = 51)) %>%
-  add_epred_draws(NM_met_nwt, ndraws = 100) %>% 
+  add_epred_draws(NM_met_nwt, ndraws = 100, re_formula = NA) %>% 
+  dplyr::mutate(.epred = log(.epred)) %>% 
   ggplot()+
   # geom_line(data = NM_met_nwt_pred, aes(x = lmbar_n_met, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+
   geom_point(data = dat, aes(x = lmbar_n_met, y = ln_tot_s, color = site_id))+
@@ -884,40 +927,40 @@ theme(legend.position = 'none',
         panel.background = element_rect())
 ```
 
-```{r N-Mb_met plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'}
-lmbar_b_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_b_met) + mean(dat$lmbar_b_met)),1), scientific = TRUE)
+<!-- ```{r N-Mb_met plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'} -->
+<!-- lmbar_b_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_b_met) + mean(dat$lmbar_b_met)),1), scientific = TRUE) -->
 
-dat %>% 
-data_grid(lmbar_b_met_s = seq_range(lmbar_b_met_s, n = 51)) %>%
-  add_epred_draws(NM_met_bwt, ndraws = 100) %>% 
-  ggplot()+
-  geom_line(data = NM_met_bwt_pred, aes(x = lmbar_b_met_s, y = pred), linewidth = 1.1, linetype =   'dotted', color = 'darkgrey')+
-  geom_point(data = dat, aes(x = lmbar_b_met_s, y = ln_tot_s, color = site_id))+
-  geom_line(aes(x = lmbar_b_met_s, y = .epred, group = .draw), alpha = 0.1)+
-  geom_smooth(data = dat, aes(x = lmbar_b_met_s, y = ln_tot_s), se = FALSE, method = 'gam')+
-  scale_color_viridis(discrete = TRUE)+
-  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3, 3), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"), limits = c(-3.5,3), breaks = seq.int(-3,3, by = 1), labels = lmbar_b_met_s_labels)+
-  theme(legend.position = 'none')
-```
+<!-- dat %>%  -->
+<!-- data_grid(lmbar_b_met_s = seq_range(lmbar_b_met_s, n = 51)) %>% -->
+<!--   add_epred_draws(NM_met_bwt, ndraws = 100) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(data = NM_met_bwt_pred, aes(x = lmbar_b_met_s, y = pred), linewidth = 1.1, linetype =   'dotted', color = 'darkgrey')+ -->
+<!--   geom_point(data = dat, aes(x = lmbar_b_met_s, y = ln_tot_s, color = site_id))+ -->
+<!--   geom_line(aes(x = lmbar_b_met_s, y = .epred, group = .draw), alpha = 0.1)+ -->
+<!--   geom_smooth(data = dat, aes(x = lmbar_b_met_s, y = ln_tot_s), se = FALSE, method = 'gam')+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3, 3), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+ -->
+<!--   scale_x_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"), limits = c(-3.5,3), breaks = seq.int(-3,3, by = 1), labels = lmbar_b_met_s_labels)+ -->
+<!--   theme(legend.position = 'none') -->
+<!-- ``` -->
 
-```{r N-Mb plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'}
-lmbar_b_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_b) + mean(dat$lmbar_b)),1), scientific = TRUE)
+<!-- ```{r N-Mb plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'} -->
+<!-- lmbar_b_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_b) + mean(dat$lmbar_b)),1), scientific = TRUE) -->
 
-dat %>% 
-data_grid(lmbar_n_s = seq_range(lmbar_n_met_s, n = 51)) %>%
-  add_epred_draws(NM_nwt, re_formula = NA, ndraws = 100) %>% 
-  ggplot()+
-  geom_line(data = NM_bwt_pred, aes(x = lmbar_b_s, y = pred), linewidth = 1.1, linetype =   'dotted', color = 'darkgrey')+
-  geom_point(data = dat, aes(x = lmbar_b_s, y = ln_tot_s, color = site_id))+
-  geom_line(aes(x = lmbar_b_s, y = .epred, group = .draw), alpha = 0.1)+
-  geom_smooth(data = dat, aes(x = lmbar_b_s, y = ln_tot_s), se = FALSE, method = 'gam')+
-  scale_color_viridis(discrete = TRUE)+
-  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3, 3), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"), limits = c(-3.5,3), breaks = seq.int(-3,3, by = 1), labels = lmbar_b_met_s_labels)+
-  theme(legend.position = 'none')
+<!-- dat %>%  -->
+<!-- data_grid(lmbar_n_s = seq_range(lmbar_n_met_s, n = 51)) %>% -->
+<!--   add_epred_draws(NM_nwt, re_formula = NA, ndraws = 100) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(data = NM_bwt_pred, aes(x = lmbar_b_s, y = pred), linewidth = 1.1, linetype =   'dotted', color = 'darkgrey')+ -->
+<!--   geom_point(data = dat, aes(x = lmbar_b_s, y = ln_tot_s, color = site_id))+ -->
+<!--   geom_line(aes(x = lmbar_b_s, y = .epred, group = .draw), alpha = 0.1)+ -->
+<!--   geom_smooth(data = dat, aes(x = lmbar_b_s, y = ln_tot_s), se = FALSE, method = 'gam')+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3, 3), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+ -->
+<!--   scale_x_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"), limits = c(-3.5,3), breaks = seq.int(-3,3, by = 1), labels = lmbar_b_met_s_labels)+ -->
+<!--   theme(legend.position = 'none') -->
 
-```
+<!-- ``` -->
 
 ```{r met residual analysis}
 
