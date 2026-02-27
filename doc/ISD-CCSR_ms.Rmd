@@ -169,28 +169,28 @@ dat = sampleParams %>%
                                                   xmin = ..4,
                                                   xmax = ..5)),
            m_est = pmap_dbl(.,~pareto_expectation(lambda = ..27,
-                                                  xmin = 0.0026,
+                                                  xmin = 0.003,
                                                   xmax = ..5)),
            m_est_l = pmap_dbl(.,~pareto_expectation(lambda = ..28,
-                                                    xmin = 0.0026,
+                                                    xmin = 0.003,
                                                     xmax = ..5)),
            m_est_u = pmap_dbl(.,~pareto_expectation(lambda = ..29,
-                                                    xmin = 0.0026,
+                                                    xmin = 0.003,
                                                     xmax = ..5)),
            n_est = pmap_dbl(.,~estimate_pareto_N(n = ..6,
                                            lambda = ..27,
                                            xmin = ..4,
-                                           xmin2 = 0.0026,
+                                           xmin2 = 0.003,
                                            xmax = ..5)),
            n_est_l = pmap_dbl(.,~estimate_pareto_N(n = ..6,
                                                    lambda = ..28,
                                                    xmin = ..4,
-                                                   xmin2 = 0.0026,
+                                                   xmin2 = 0.003,
                                                    xmax = ..5)),
            n_est_u = pmap_dbl(.,~estimate_pareto_N(n = ..6,
                                                    lambda = ..29,
                                                    xmin = ..4,
-                                                   xmin2 = 0.0026,
+                                                   xmin2 = 0.003,
                                                    xmax = ..5)),
            b_old = m_old * n_tot,
            b_est = m_est * n_est,
@@ -222,54 +222,25 @@ rm("lambdas", "dw_dat", "dw_dat_temp", "sampleParams")
 
 ```{r environmental models}
 
+output =
+  capture.output(
+    brm(
+      bf(lb_m2 ~ log_gpp_s + (1 | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'always',
+      file = here("data/models/b_gpp"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+    )
+  )
 
-dat_summ %>%
-  ggplot()+
-  geom_point(aes(y = log(b_est), x = log(hill_0), color = site_id))+
-  geom_smooth(aes(y = log(b_est), x = log(hill_0)), method = 'lm')
-# 
-dat %>%
-  ggplot() +
-  geom_point(aes(x = mat_s, y = log(b_est), color = site_id))
-
-dat %>%
-  ggplot() +
-  geom_point(aes(x = lmbar_n_est, y = ln_est, color = site_id))
-# 
-# dat %>% 
-#   ggplot()+
-#   geom_point(aes(x = lmbar_b_met_s, y = log(b_est), color = site_id))+
-#   scale_x_continuous(limits = c(NA,NA))+
-#   scale_y_continuous(limits = c(5, NA))
-# 
-# lm(lb_m2~lmbar_b_met_s, data = dat)
-# 
-# dat %>% 
-#   ggplot()+
-#   geom_point(aes(x = log(n_est), y = log(hill_0), color = site_id), shape = 21, size = 1)+
-#   geom_point(aes(x = log(n_mean), y = log(hill_0), color = site_id, fill = site_id), shape = 22, size = 2)
-# 
-# 
-# 
-# output =
-#   capture.output(
-#     brm(
-#       bf(lb_m2 ~ log_gpp_s + (1 | site_id) + (1|site_id:sample_id)),
-#       data = dat,
-#       family = gaussian(link = 'identity'),
-#       iter = 5000,
-#       thin = 1,
-#       file_refit = 'always',
-#       file = here("data/models/b_gpp"),
-#       control = list(adapt_delta = 0.99),
-#       chains = 4,
-#       cores = 4,
-#       seed = 1312,
-#       save_pars = save_pars(all = TRUE)
-#     )
-#   )
-# 
-# b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
+b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
 
 
 ```
@@ -750,7 +721,13 @@ NM_met_bwt_pred %>%
 NM_met_bwt_pred %>% 
   left_join(dat) %>% 
   ggplot()+
-  geom_point(aes(x = lambda_med, y = resid_theory))
+  geom_point(aes(x = lambda_med, y = resid_theory, fill = site_id), color = 'black', shape = 21, alpha = 0.5)+
+  geom_point(data = . %>% summarise(hill_0 = mean(hill_0, na.rm = TRUE),
+                                    resid_theory = mean(resid_theory, na.rm = TRUE),
+                                    lambda_med = mean(lambda_med),.by = 'site_id'),
+             aes(x = lambda_med, resid_theory, fill = site_id), color = 'black', shape = 21, size = 3)+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none')
 
 
 output = capture.output(
@@ -901,31 +878,32 @@ data_grid(lmbar_n_met = seq_range(lmbar_n_met, n = 51)) %>%
   theme(legend.position = 'none')
 ```
 
-```{r N-Mn plot, fig.cap='Figure 1. The scaling of community abundances by community mean body size across the NEON streams. Transparent grey lines represent a random sample of posterior draws from a linear model (n = 100), while the dotted line represents the relationship predicted by theory, $N ~ \\overline{M^{-0.75}}$. The linear model was fit on centered and scaled data and axis back-transformed to the original scale. The inset shows the predicted site-specific relationships between community abundance and mean body size from the mixed-effects model.'}
 
-# create label vector for scaled breaks. s 
-# lntot_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$ln_tot) + mean(dat$ln_tot)),1), scientific = TRUE)
+<!-- ```{r N-Mn plot, fig.cap='Figure 1. The scaling of community abundances by community mean body size across the NEON streams. Transparent grey lines represent a random sample of posterior draws from a linear model (n = 100), while the dotted line represents the relationship predicted by theory, $N ~ \\overline{M^{-0.75}}$. The linear model was fit on centered and scaled data and axis back-transformed to the original scale. The inset shows the predicted site-specific relationships between community abundance and mean body size from the mixed-effects model.'} -->
 
-lmbar_n_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_n_met) + mean(dat$lmbar_n_met)),1), scientific = TRUE)
+<!-- # create label vector for scaled breaks. s  -->
+<!-- # lntot_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$ln_tot) + mean(dat$ln_tot)),1), scientific = TRUE) -->
 
-inset = dat %>%
-  group_by(site_id) %>% 
-  data_grid(lmbar_n_met_s = seq_range(lmbar_n_met_s, n = 51)) %>%
-  ungroup %>% 
-  mutate(pred = predict(NM_met_nwt, newdata = .,)[,1]) %>% # re.form = ~(1 + lmbar_n_met_s|site_id), allow.new.levels = TRUE)[,1]) %>% 
-  ggplot()+
-  geom_line(data = NM_met_nwt_pred, aes(x = lmbar_n_met_s, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+
-  geom_line(aes(x = lmbar_n_met_s, y = pred, group = site_id, color = site_id))+
-  scale_color_viridis(discrete = TRUE, alpha = 0.8)+
-  scale_fill_viridis(discrete = TRUE)+
-  scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3.5, 3.5), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n_met_s_labels)+
-theme(legend.position = 'none',
-        axis.title = element_blank(),
-        axis.text = element_blank(),
-        panel.border = element_rect(color = 'black', fill = 'transparent'),
-        panel.background = element_rect())
-```
+<!-- lmbar_n_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_n_met) + mean(dat$lmbar_n_met)),1), scientific = TRUE) -->
+
+<!-- inset = dat %>% -->
+<!--   group_by(site_id) %>%  -->
+<!--   data_grid(lmbar_n_met_s = seq_range(lmbar_n_met_s, n = 51)) %>% -->
+<!--   ungroup %>%  -->
+<!--   mutate(pred = predict(NM_met_nwt, newdata = .,)[,1]) %>% # re.form = ~(1 + lmbar_n_met_s|site_id), allow.new.levels = TRUE)[,1]) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(data = NM_met_nwt_pred, aes(x = lmbar_n_met_s, y = pred), linewidth = 1.1, linetype = 'dotted', color = 'darkgrey')+ -->
+<!--   geom_line(aes(x = lmbar_n_met_s, y = pred, group = site_id, color = site_id))+ -->
+<!--   scale_color_viridis(discrete = TRUE, alpha = 0.8)+ -->
+<!--   scale_fill_viridis(discrete = TRUE)+ -->
+<!--   scale_y_continuous(name = expression(log[10]*"(N)"), limits = c(-3.5, 3.5), expand = c(0,0), breaks = seq.int(-3,3, by = 1), labels = lntot_s_labels)+ -->
+<!--   scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"), limits = c(-3,4.51), breaks = seq.int(-3,3, by = 1), labels = lmbar_n_met_s_labels)+ -->
+<!-- theme(legend.position = 'none', -->
+<!--         axis.title = element_blank(), -->
+<!--         axis.text = element_blank(), -->
+<!--         panel.border = element_rect(color = 'black', fill = 'transparent'), -->
+<!--         panel.background = element_rect()) -->
+<!-- ``` -->
 
 <!-- ```{r N-Mb_met plot,fig.cap='Figure 2. The scaling of community abundances by community biomass-weighted body size across the NEON streams.'} -->
 <!-- lmbar_b_met_s_labels = format(signif(10^(seq.int(-3,3)*sd(dat$lmbar_b_met) + mean(dat$lmbar_b_met)),1), scientific = TRUE) -->
@@ -962,167 +940,170 @@ theme(legend.position = 'none',
 
 <!-- ``` -->
 
-```{r met residual analysis}
 
-NMbarN_met_res = residuals(NM_met_nwt) %>%  data.frame %>% select(NMnwt_met_res = 'Estimate', NMnwt_met_2.5 = 'Q2.5', NMnwt_met_97.5 = 'Q97.5') 
-NMbarB_met_res = residuals(NM_met_bwt) %>% data.frame %>% select(NMbwt_met_res = 'Estimate', NMbwt_met_2.5 = 'Q2.5', NMbwt_met_97.5 = 'Q97.5') 
+<!-- ```{r met residual analysis} -->
 
-dat = dat %>% bind_cols(NMbarN_met_res) %>% bind_cols(NMbarB_met_res) %>% left_join(s_dat, by = "site_id")
+<!-- NMbarN_met_res = residuals(NM_met_nwt) %>%  data.frame %>% select(NMnwt_met_res = 'Estimate', NMnwt_met_2.5 = 'Q2.5', NMnwt_met_97.5 = 'Q97.5')  -->
+<!-- NMbarB_met_res = residuals(NM_met_bwt) %>% data.frame %>% select(NMbwt_met_res = 'Estimate', NMbwt_met_2.5 = 'Q2.5', NMbwt_met_97.5 = 'Q97.5')  -->
 
-output = capture.output(brm(bf(NMnwt_met_res~lambda_med), 
-                            data = dat,
-                            family = gaussian(link = 'identity'),
-                            iter = 1000,
-                            thin = 1,
-                            file_refit = 'on_change',
-                            file = here("data/models/NM_nwt_met_res"),
-                            chains = 4, cores = 4,
-                            seed = 1312
-                            ))
+<!-- dat = dat %>% bind_cols(NMbarN_met_res) %>% bind_cols(NMbarB_met_res) %>% left_join(s_dat, by = "site_id") -->
 
-NMnwt_met_res = readRDS(here("data/models/NM_nwt_met_res.rds"))
+<!-- output = capture.output(brm(bf(NMnwt_met_res~lambda_med),  -->
+<!--                             data = dat, -->
+<!--                             family = gaussian(link = 'identity'), -->
+<!--                             iter = 1000, -->
+<!--                             thin = 1, -->
+<!--                             file_refit = 'on_change', -->
+<!--                             file = here("data/models/NM_nwt_met_res"), -->
+<!--                             chains = 4, cores = 4, -->
+<!--                             seed = 1312 -->
+<!--                             )) -->
 
-output = capture.output(brm(bf(NMbwt_met_res~lambda_med), 
-                            data = dat,
-                            family = gaussian(link = 'identity'),
-                            iter = 1000,
-                            thin = 1,
-                            file_refit = 'on_change',
-                            file = here("data/models/NM_bwt_met_res"),
-                            chains = 4, cores = 4,
-                            seed = 1312
-                            ))
+<!-- NMnwt_met_res = readRDS(here("data/models/NM_nwt_met_res.rds")) -->
 
-NMbwt_met_res = readRDS(here("data/models/NM_bwt_met_res.rds"))
+<!-- output = capture.output(brm(bf(NMbwt_met_res~lambda_med),  -->
+<!--                             data = dat, -->
+<!--                             family = gaussian(link = 'identity'), -->
+<!--                             iter = 1000, -->
+<!--                             thin = 1, -->
+<!--                             file_refit = 'on_change', -->
+<!--                             file = here("data/models/NM_bwt_met_res"), -->
+<!--                             chains = 4, cores = 4, -->
+<!--                             seed = 1312 -->
+<!--                             )) -->
 
-isd_NMnwt_met_plot = dat %>% 
-  add_epred_draws(NMnwt_met_res, ndraws = 100) %>% 
-  ggplot()+
-  geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
-  geom_point(aes(x = lambda_med,y = NMnwt_met_res, color = site_id))+
-  scale_color_viridis(discrete = TRUE)+
-  labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+
-  theme(legend.position = 'none',
-        axis.title.x = element_blank(),
-        axis.title.y = element_blank())
+<!-- NMbwt_met_res = readRDS(here("data/models/NM_bwt_met_res.rds")) -->
 
-isd_NMbwt_met_plot = dat %>% 
-  add_epred_draws(NMbwt_met_res, ndraws = 100) %>% 
-  ggplot()+
-  geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
-  geom_point(aes(y = NMbwt_met_res, x = lambda_med, color = site_id))+
-  scale_color_viridis(discrete = TRUE)+
-  labs(subtitle = expression("N-"*bar(M^0.75)['biomass-weighted']))+
-  theme(legend.position = 'none',
-        axis.title.x = element_blank(),
-        axis.title.y = element_blank())
+<!-- isd_NMnwt_met_plot = dat %>%  -->
+<!--   add_epred_draws(NMnwt_met_res, ndraws = 100) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+ -->
+<!--   geom_point(aes(x = lambda_med,y = NMnwt_met_res, color = site_id))+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+ -->
+<!--   theme(legend.position = 'none', -->
+<!--         axis.title.x = element_blank(), -->
+<!--         axis.title.y = element_blank()) -->
 
-gridExtra::grid.arrange(isd_NMnwt_met_plot, isd_NMbwt_met_plot, ncol =2,
-                        bottom = expression(!Lamdba),
-                        left = expression(paste("\U03B5 (residuals from N")))#,bar(M^0.75), ")")))
+<!-- isd_NMbwt_met_plot = dat %>%  -->
+<!--   add_epred_draws(NMbwt_met_res, ndraws = 100) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+ -->
+<!--   geom_point(aes(y = NMbwt_met_res, x = lambda_med, color = site_id))+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   labs(subtitle = expression("N-"*bar(M^0.75)['biomass-weighted']))+ -->
+<!--   theme(legend.position = 'none', -->
+<!--         axis.title.x = element_blank(), -->
+<!--         axis.title.y = element_blank()) -->
 
-```
+<!-- gridExtra::grid.arrange(isd_NMnwt_met_plot, isd_NMbwt_met_plot, ncol =2, -->
+<!--                         bottom = expression(!Lamdba), -->
+<!--                         left = expression(paste("\U03B5 (residuals from N")))#,bar(M^0.75), ")"))) -->
+
+<!-- ``` -->
 
 
-```{r residual analysis, fig.cap="Figure X. The relationship between the individual size distribution rate parameter $\\lambda$ and residuals from the fitted cross community size relationship."}
+<!-- ```{r residual analysis, fig.cap="Figure X. The relationship between the individual size distribution rate parameter $\\lambda$ and residuals from the fitted cross community size relationship."} -->
 
-NMbarN_res = residuals(NM_nwt) %>%  data.frame %>% select(NMnwt_res = 'Estimate', NMnwt_2.5 = 'Q2.5', NMnwt_97.5 = 'Q97.5') 
+<!-- NMbarN_res = residuals(NM_nwt) %>%  data.frame %>% select(NMnwt_res = 'Estimate', NMnwt_2.5 = 'Q2.5', NMnwt_97.5 = 'Q97.5')  -->
 
-dat = dat %>% bind_cols(NMbarN_res) %>% bind_cols(NMbarB_res) %>% left_join(s_dat, by = "site_id")
+<!-- dat = dat %>% bind_cols(NMbarN_res) %>% bind_cols(NMbarB_res) %>% left_join(s_dat, by = "site_id") -->
 
-dat = dat %>% bind_cols(NMbarN_res) 
+<!-- dat = dat %>% bind_cols(NMbarN_res)  -->
 
-output = capture.output(brm(bf(NMnwt_res~lambda_med+(1+lambda_med|site_id)), 
-                            data = dat,
-                            family = gaussian(link = 'identity'),
-                            iter = 1000,
-                            thin = 1,
-                            file_refit = 'never',
-                            file = here("data/models/NM_nwt_res"),
-                            chains = 4, cores = 4,
-                            sample_prior = 'yes',
-                            save_pars = save_pars(all = TRUE),
-                            seed = 1312
-                            ))
+<!-- output = capture.output(brm(bf(NMnwt_res~lambda_med+(1+lambda_med|site_id)),  -->
+<!--                             data = dat, -->
+<!--                             family = gaussian(link = 'identity'), -->
+<!--                             iter = 1000, -->
+<!--                             thin = 1, -->
+<!--                             file_refit = 'never', -->
+<!--                             file = here("data/models/NM_nwt_res"), -->
+<!--                             chains = 4, cores = 4, -->
+<!--                             sample_prior = 'yes', -->
+<!--                             save_pars = save_pars(all = TRUE), -->
+<!--                             seed = 1312 -->
+<!--                             )) -->
 
-NMnwt_res = readRDS(here("data/models/NM_nwt_res.rds"))
+<!-- NMnwt_res = readRDS(here("data/models/NM_nwt_res.rds")) -->
 
-isd_NMnwt_plot = dat %>% 
-  add_epred_draws(NMnwt_res, re_formula = NA, ndraws = 100) %>% 
-  ggplot()+
-  geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
-  geom_point(aes(x = lambda_med,y = NMnwt_res, color = site_id))+
-  scale_color_viridis(discrete = TRUE)+
-  scale_x_continuous(name = expression(lambda))+
-  labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+
-  theme(legend.position = 'none')
+<!-- isd_NMnwt_plot = dat %>%  -->
+<!--   add_epred_draws(NMnwt_res, re_formula = NA, ndraws = 100) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+ -->
+<!--   geom_point(aes(x = lambda_med,y = NMnwt_res, color = site_id))+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   scale_x_continuous(name = expression(lambda))+ -->
+<!--   labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+ -->
+<!--   theme(legend.position = 'none') -->
 
-isd_NMnwt_plot
+<!-- isd_NMnwt_plot -->
 
-```
+<!-- ``` -->
 
-```{r residual from theory, fig.cap = "Figure X. The relationship between the individual size distribution rate parameter $\\lambda$ and residuals from the theoretical cross community size relationship, $N ~ M^{-0.75}$. The size of each point is scaled to the mean body size of the community."}
 
-output = capture.output(brm(bf(resid_theory~lambda_med+(1+lambda_med|site_id)), 
-                            data = NM_nwt_pred,
-                            family = gaussian(link = 'identity'),
-                            iter = 1000,
-                            thin = 1,
-                            file_refit = 'never',
-                            file = here("data/models/NM_nwt_theory"),
-                            chains = 4, cores = 4,
-                            sample_prior = 'yes',
-                            save_pars = save_pars(all = TRUE),
-                            seed = 1312
-                            ))
+<!-- ```{r residual from theory, fig.cap = "Figure X. The relationship between the individual size distribution rate parameter $\\lambda$ and residuals from the theoretical cross community size relationship, $N ~ M^{-0.75}$. The size of each point is scaled to the mean body size of the community."} -->
 
-NMnwt_res_theo = readRDS(here("data/models/NM_nwt_theory.rds"))
+<!-- output = capture.output(brm(bf(resid_theory~lambda_med+(1+lambda_med|site_id)),  -->
+<!--                             data = NM_nwt_pred, -->
+<!--                             family = gaussian(link = 'identity'), -->
+<!--                             iter = 1000, -->
+<!--                             thin = 1, -->
+<!--                             file_refit = 'never', -->
+<!--                             file = here("data/models/NM_nwt_theory"), -->
+<!--                             chains = 4, cores = 4, -->
+<!--                             sample_prior = 'yes', -->
+<!--                             save_pars = save_pars(all = TRUE), -->
+<!--                             seed = 1312 -->
+<!--                             )) -->
 
-# NM_nwt_pred_out = NM_nwt_pred %>% filter(lambda_med > -1.35)
-# output = capture.output(brm(bf(resid_theory~lambda_med+(1|site_id)), 
-#                             data = NM_nwt_pred_out,
-#                             family = gaussian(link = 'identity'),
-#                             iter = 1000,
-#                             thin = 1,
-#                             file_refit = 'never',
-#                             file = here("data/models/NM_nwt_theory_outlier"),
-#                             chains = 4, cores = 4,
-#                             seed = 1312
-#                             ))
-# 
-# NMnwt_res_theo_out = readRDS(here("data/models/NM_nwt_theory_outlier.rds"))
+<!-- NMnwt_res_theo = readRDS(here("data/models/NM_nwt_theory.rds")) -->
 
-isd_NMnwt_plot = NM_nwt_pred %>% 
-  add_epred_draws(NMnwt_res_theo, re_formula = NA, ndraws = 100) %>% 
-  ggplot()+
-  geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+
-  geom_point(data = NM_met_nwt_pred, aes(x = lambda_med, y = resid_theory,  fill = site_id, size = lmbar_n_met_s),color = 'black', shape = 21, alpha = 0.6)+
-  scale_color_viridis(discrete = TRUE, alpha = 0.8)+
-  scale_fill_viridis(discrete = TRUE, alpha = 0.6)+
-  scale_y_continuous(name = 'resids')+
-  scale_x_continuous(name = expression(lambda))+
-  labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+
-  theme(legend.position = 'none')
+<!-- # NM_nwt_pred_out = NM_nwt_pred %>% filter(lambda_med > -1.35) -->
+<!-- # output = capture.output(brm(bf(resid_theory~lambda_med+(1|site_id)),  -->
+<!-- #                             data = NM_nwt_pred_out, -->
+<!-- #                             family = gaussian(link = 'identity'), -->
+<!-- #                             iter = 1000, -->
+<!-- #                             thin = 1, -->
+<!-- #                             file_refit = 'never', -->
+<!-- #                             file = here("data/models/NM_nwt_theory_outlier"), -->
+<!-- #                             chains = 4, cores = 4, -->
+<!-- #                             seed = 1312 -->
+<!-- #                             )) -->
+<!-- #  -->
+<!-- # NMnwt_res_theo_out = readRDS(here("data/models/NM_nwt_theory_outlier.rds")) -->
 
-isd_NMnwt_plot
-```
+<!-- isd_NMnwt_plot = NM_nwt_pred %>%  -->
+<!--   add_epred_draws(NMnwt_res_theo, re_formula = NA, ndraws = 100) %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_line(aes(x = lambda_med, y = .epred, group = .draw), alpha = 0.1)+ -->
+<!--   geom_point(data = NM_met_nwt_pred, aes(x = lambda_med, y = resid_theory,  fill = site_id, size = lmbar_n_met_s),color = 'black', shape = 21, alpha = 0.6)+ -->
+<!--   scale_color_viridis(discrete = TRUE, alpha = 0.8)+ -->
+<!--   scale_fill_viridis(discrete = TRUE, alpha = 0.6)+ -->
+<!--   scale_y_continuous(name = 'resids')+ -->
+<!--   scale_x_continuous(name = expression(lambda))+ -->
+<!--   labs(subtitle = expression("N-"*bar(M^0.75)['abun-weighted']))+ -->
+<!--   theme(legend.position = 'none') -->
 
-```{r slope plots}
+<!-- isd_NMnwt_plot -->
+<!-- ``` -->
 
-effectDf = NMnwt_res %>% 
-  spread_draws(b_lambda_med) %>% 
-  mutate(model = 'NMnwt_res') %>% 
-  bind_rows(NMnwt_res_theo %>% spread_draws(b_lambda_med) %>% mutate(model = 'NMnwt_res_theo'))
 
-effectDf %>% 
-  ggplot(aes(x = b_lambda_med, y = model, fill = after_stat(x > 0)))+
-  stat_halfeye()+
-  scale_x_continuous(name = expression(Beta*"("*lambda*")"))+
-  geom_vline(aes(xintercept = 0), linetype = 'dotted', color = 'black')+
-  scale_fill_manual(values = c('gray80', 'skyblue'))+
-  theme(legend.position = 'none')
+<!-- ```{r slope plots} -->
 
-```
+<!-- effectDf = NMnwt_res %>%  -->
+<!--   spread_draws(b_lambda_med) %>%  -->
+<!--   mutate(model = 'NMnwt_res') %>%  -->
+<!--   bind_rows(NMnwt_res_theo %>% spread_draws(b_lambda_med) %>% mutate(model = 'NMnwt_res_theo')) -->
+
+<!-- effectDf %>%  -->
+<!--   ggplot(aes(x = b_lambda_med, y = model, fill = after_stat(x > 0)))+ -->
+<!--   stat_halfeye()+ -->
+<!--   scale_x_continuous(name = expression(Beta*"("*lambda*")"))+ -->
+<!--   geom_vline(aes(xintercept = 0), linetype = 'dotted', color = 'black')+ -->
+<!--   scale_fill_manual(values = c('gray80', 'skyblue'))+ -->
+<!--   theme(legend.position = 'none') -->
+
+<!-- ``` -->
 
 
 ```{r env plots}
@@ -1262,45 +1243,46 @@ effectDf %>%
 
 While the calculation of total abundance is straightforward, estimating mean body size of the community can be done in multiple ways: 1) by taking the mean of all individuals (i.e., abundance-weighted mean), by calculating the relative biomass of each body size and using this to weight body size by relative biomass (i.e., biomass-weighted), and lastly to correct each mass to metabolic mass (*M*^0.75^) and take the abundance- or biomass-weighted mean of these corrected body sizes. The theorized relationship between abundance and body size in $N \propto M$ is based on energy use, i.e. metabolism, and metabolism scales non-linearly with body size, therefore, the metabolic correction is most appropriate [@white2007]. These differences can have significant influence on the community biomass estimates (Figure S1). 
 
-```{r N-B body size, fig.cap= 'Figure S1. The relationship between different measures of community mean body size. a) uncorrected mean body size weighted by abundance and biomass, b) mean abundance-weighted body mass vs abundance-weighted body mass with a metabolic correction, and c) biomass-weighted vs biomass-weighted with metabolic correction.' }
 
-M_nbwt_plot = dat %>% 
-  ggplot()+
-  geom_point(aes(x = lmbar_n, y = lmbar_b, color = site_id), size = 1.3)+
-  scale_color_viridis(discrete = TRUE)+
-  geom_abline()+
-  annotate('text', label = 'a)', x = -Inf, y = Inf, hjust = 0, vjust = 1)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"))+
-  scale_y_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"))+
-  theme(legend.position = 'none')
+<!-- ```{r N-B body size, fig.cap= 'Figure S1. The relationship between different measures of community mean body size. a) uncorrected mean body size weighted by abundance and biomass, b) mean abundance-weighted body mass vs abundance-weighted body mass with a metabolic correction, and c) biomass-weighted vs biomass-weighted with metabolic correction.' } -->
 
-M_nwt_plot = dat %>% 
-  ggplot()+
-  geom_point(aes(x = lmbar_n, y = lmbar_n0.75, color = site_id), size = 1.3, shape = 22)+
-  scale_color_viridis(discrete = TRUE)+
-  geom_abline()+
-  annotate('text', label = 'b)', x = -Inf, y = Inf, hjust = 0, vjust = 1)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"))+
-  scale_y_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"))+
-  theme(legend.position = 'none')
+<!-- M_nbwt_plot = dat %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_point(aes(x = lmbar_n, y = lmbar_b, color = site_id), size = 1.3)+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   geom_abline()+ -->
+<!--   annotate('text', label = 'a)', x = -Inf, y = Inf, hjust = 0, vjust = 1)+ -->
+<!--   scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"))+ -->
+<!--   scale_y_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"))+ -->
+<!--   theme(legend.position = 'none') -->
 
-M_bwt_plot = dat %>% 
-  ggplot()+
-  geom_point(aes(x = lmbar_b, y = lmbar_b0.75, color = site_id), size = 1.3, shape = 23)+
-  scale_color_viridis(discrete = TRUE)+
-  geom_abline()+
-  annotate('text', label = 'c)', x = -Inf, y = Inf, hjust = 0, vjust = 1)+
-  scale_x_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"))+
-  scale_y_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"))+
-  theme(legend.position = 'none')
+<!-- M_nwt_plot = dat %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_point(aes(x = lmbar_n, y = lmbar_n0.75, color = site_id), size = 1.3, shape = 22)+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   geom_abline()+ -->
+<!--   annotate('text', label = 'b)', x = -Inf, y = Inf, hjust = 0, vjust = 1)+ -->
+<!--   scale_x_continuous(name = expression(log[10]*"("*bar(M)["abun-weighted"]*")"))+ -->
+<!--   scale_y_continuous(name = expression(log[10]*"("*bar(M^0.75)["abun-weighted"]*")"))+ -->
+<!--   theme(legend.position = 'none') -->
 
-gridExtra::grid.arrange(grobs = list(as_grob(M_nbwt_plot), 
-                             as_grob(M_nwt_plot),
-                             as_grob(M_bwt_plot)),
-                        layout_matrix = rbind(c(1,1,1,1),
-                                              c(2,2,3,3)), nrow = 2)
+<!-- M_bwt_plot = dat %>%  -->
+<!--   ggplot()+ -->
+<!--   geom_point(aes(x = lmbar_b, y = lmbar_b0.75, color = site_id), size = 1.3, shape = 23)+ -->
+<!--   scale_color_viridis(discrete = TRUE)+ -->
+<!--   geom_abline()+ -->
+<!--   annotate('text', label = 'c)', x = -Inf, y = Inf, hjust = 0, vjust = 1)+ -->
+<!--   scale_x_continuous(name = expression(log[10]*"("*bar(M)["biomass-weighted"]*")"))+ -->
+<!--   scale_y_continuous(name = expression(log[10]*"("*bar(M^0.75)["biomass-weighted"]*")"))+ -->
+<!--   theme(legend.position = 'none') -->
 
-```
+<!-- gridExtra::grid.arrange(grobs = list(as_grob(M_nbwt_plot),  -->
+<!--                              as_grob(M_nwt_plot), -->
+<!--                              as_grob(M_bwt_plot)), -->
+<!--                         layout_matrix = rbind(c(1,1,1,1), -->
+<!--                                               c(2,2,3,3)), nrow = 2) -->
+
+<!-- ``` -->
 
 ```{r uncorrected models}
 ## calculate the bayesian linear regression
