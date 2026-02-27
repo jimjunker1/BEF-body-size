@@ -194,6 +194,7 @@ dat = sampleParams %>%
                                                    xmax = ..5)),
            b_old = m_old * n_tot,
            b_est = m_est * n_est,
+           lb_est = log(b_est),
            b_est_l = m_est_l * n_est_l,
            b_est_u = m_est_u * n_est_u,
            b_diff = b_est - b_m2,
@@ -220,17 +221,19 @@ dat_summ = dat %>%
 rm("lambdas", "dw_dat", "dw_dat_temp", "sampleParams") 
 ```
 
+## Environmental models
+
 ```{r environmental models}
 
 output =
   capture.output(
     brm(
-      bf(lb_m2 ~ log_gpp_s + (1 | site_id)),
+      bf(lb_est ~ log_gpp_s + (1 | site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 5000,
       thin = 1,
-      file_refit = 'always',
+      file_refit = 'on_change',
       file = here("data/models/b_gpp"),
       control = list(adapt_delta = 0.99),
       chains = 4,
@@ -242,14 +245,66 @@ output =
 
 b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
 
+b_gpp_cond = conditional_effects(b_gpp_full_lmm) %>% 
+  flatten %>% data.frame
+
+b_gpp_lm_fix = fixef(b_gpp_full_lmm)[2, 'Estimate']
+perc_pos_gpp = ecdf(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s))
+1 - perc_pos_gpp(0)
+quantile(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s), c(0.025, 0.975))
+
+
+output =
+  capture.output(
+    brm(
+      bf(lb_est ~ mat_s + (1 | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_mat"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+    )
+  )
+
+b_mat_full_lmm = readRDS(here("data/models/b_mat.rds"))
+
+output =
+  capture.output(
+    brm(
+      bf(lb_est ~ log_om_s + (1 | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_om"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+    )
+  )
+
+b_om_full_lmm = readRDS(here("data/models/b_om.rds"))
+
+
 
 ```
+
+## Richness models
 
 ```{r richness models}
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ log(hill_0) + (1 |site_id)),
+      bf(lb_est ~ log(hill_0) + (1 |site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 1000,
@@ -266,7 +321,7 @@ output =
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
+      bf(lb_est ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 2000,
@@ -301,7 +356,7 @@ b_s_pred = dat %>%
             hill_0 = hill_0) %>%
   add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA)
 
-b_breaks = seq.int(round(min(dat$lb_m2, na.rm = TRUE)), round(max(dat$lb_m2, na.rm = TRUE)), by = 2)
+b_breaks = seq.int(round(min(log(dat$b_est), na.rm = TRUE)), round(max(log(dat$b_est), na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(floor(min(log(dat$hill_0))), ceiling(max(log(dat$hill_0))), by = 0.25)
 S_breaks = log(c(25, 50, 75, 100, 125, 150))
@@ -315,8 +370,8 @@ b_s_pred_plot = b_s_pred %>%
   geom_path(data = b_s_cond , aes(x = log(hill_0), y = estimate__), color = 'darkgrey', linewidth = 1)+
   geom_point(data = dat, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
   geom_point(data = dat %>% summarise(hill_0 = mean(hill_0),
-                                              lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
-             aes(x = log(hill_0), y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 3)+
+                                              lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
+             aes(x = log(hill_0), y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
   scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
                      breaks = S_breaks,
                      labels = S_labels,
@@ -336,11 +391,13 @@ saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
 #   left_join(dat %>% select(site_id, lb_m2, lambda_med, log_gpp_s, log_om_s), by = 'S.obs') 
 ```
 
+## Allometric models
+
 ```{r allometric models}
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ lmbar_b_met + (1 + lmbar_b_met| site_id)),
+      bf(lb_est ~ lmbar_b_met + (1 + lmbar_b_met| site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 3000,
@@ -365,7 +422,7 @@ b_m_pred = dat %>%
             lmbar_b_met = lmbar_b_met) %>% 
   add_epred_draws(b_m_lm, ndraws = 100, re_formula = NA)
 
-b_breaks = seq.int(round(min(dat$lb_m2, na.rm = TRUE)), round(max(dat$lb_m2, na.rm = TRUE)), by = 2)
+b_breaks = seq.int(round(min(dat$lb_est, na.rm = TRUE)), round(max(dat$lb_est, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # M_breaks = seq.int(round(min(dat$lmbar_b_met, na.rm = TRUE)), round(max(dat$lmbar_b_met, na.rm = TRUE)), by = 2)
 # convert log e to log 10 for estimation of 
@@ -381,8 +438,8 @@ b_m_pred_plot = b_m_pred %>%
   # geom_path(aes(x = lmbar_b_met, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
   geom_point(data = dat, aes(x = lmbar_b_met, y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
   geom_point(data = dat %>% summarise(lmbar_b_met = mean(lmbar_b_met),
-                                              lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
-             aes(x = lmbar_b_met, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 3)+
+                                              lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
+             aes(x = lmbar_b_met, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
   scale_x_continuous(name = expression(over(,M^0.75)["B-weighed"]*"(mg "*ind^-1*")"),
                      breaks = M_breaks,
                      labels = M_labels,
@@ -398,6 +455,8 @@ b_m_pred_plot = b_m_pred %>%
 saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
 
 ```
+
+## Allometric predictions
 
 ```{r allometric prediction}
 
@@ -463,11 +522,13 @@ saveRDS(nm_theory_plot, here('doc/plots/n_m_theory_plot.rds'))
 
 ```
 
+## Richness predictions
+
 ```{r richness prediction}
 output = 
   capture.output(
     brm(
-      bf(lb_m2 ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
+      bf(lb_est ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 2000,
@@ -501,7 +562,7 @@ b_s_lmm_fix = fixef(b_s_full_lmm)[3, 'Estimate']
 #             lambda_med = lambda_med) %>% 
 #   add_epred_draws(b_s_full_lmm, ndraws = 100, re_formula = NA)#~(1 + lambda_med |site_id))
 
-b_breaks = seq.int(round(min(dat$lb_m2, na.rm = TRUE)), round(max(dat$lb_m2, na.rm = TRUE)), by = 2)
+b_breaks = seq.int(round(min(dat$lb_est, na.rm = TRUE)), round(max(dat$lb_est, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(floor(min(log(dat$hill_0))), ceiling(max(log(dat$hill_0))), by = 0.25)
 
@@ -510,15 +571,15 @@ lambda_labels = format(lambda_breaks, scientific = FALSE, digits = 2)
 lambda_text_annotation = paste0("(ln(B) | S)","$\\approx$",eval(round(b_s_lmm_fix,2)),"$\\times$","\\lambda")
 
 b_lambda_pred_plot = b_m_marg %>% 
-  rename(lambda_med = x, lb_m2 = predicted) %>% 
+  rename(lambda_med = x, lb_est = predicted) %>% 
   ggplot()+
   geom_ribbon(aes(x = lambda_med, ymin = conf.low, ymax = conf.high), fill = 'grey', alpha = 0.5)+
-  geom_path(aes(x = lambda_med, y = lb_m2), color = 'darkgrey', linewidth = 1)+
-  geom_point(data = dat, aes(x = lambda_med, y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5)+
+  geom_path(aes(x = lambda_med, y = lb_est), color = 'darkgrey', linewidth = 1)+
+  geom_point(data = dat, aes(x = lambda_med, y = lb_est, fill = site_id), shape = 21, color = 'grey', alpha = 0.5)+
   geom_point(data = dat %>% summarise(
     lambda_med = mean(lambda_med, na.rm = TRUE),
-  lb_m2 = mean(lb_m2, na.rm = TRUE),.by = 'site_id'),
-  aes(x = lambda_med, y = lb_m2, fill = site_id), color = 'black', shape = 21, size = 3)+
+  lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
+  aes(x = lambda_med, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
   scale_x_continuous(name = TeX(paste0("\\lambda")),#, expression("Species richness ("*Hill["q=0"]*")"),
                      breaks = lambda_breaks,
                      labels = lambda_labels,
@@ -546,6 +607,8 @@ saveRDS(b_lambda_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
 #   scale_fill_viridis(discrete = TRUE)+
 #   theme(legend.position = 'none')
 ```
+
+## Pareto extrapolation
 
 ```{r pareto extrapolation}
 
@@ -630,6 +693,8 @@ dat %>%
 saveRDS(n_m_extrapolate_plot, here("doc/plots/nm_extrapolate_plot.rds"))
 ```
 
+## Richness extrapolation
+
 ```{r richness extrapolated}
 output = 
   capture.output(
@@ -651,7 +716,7 @@ n_s_est = readRDS(here("data/models/n_s_est.rds"))
 
 output = 
   capture.output(
-    brm(bf(log(b_est)~log(hill_0) + (1 |site_id)),
+    brm(bf(lb_est~log(hill_0) + (1 |site_id)),
         data = dat,
         family = gaussian(link = 'identity'),
         iter = 2000,
@@ -668,7 +733,7 @@ output =
 output = 
   capture.output(
     brm(
-      bf(log(b_est) ~ log(hill_0) + (1 |site_id)),
+      bf(lb_est ~ log(hill_0) + (1 |site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 1000,
@@ -685,7 +750,7 @@ output =
 output = 
   capture.output(
     brm(
-      bf(log(b_est) ~ lambda_med + (1 |site_id)),
+      bf(lb_est ~ lambda_med + (1 |site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
       iter = 1000,
@@ -704,6 +769,8 @@ best_s_lmm = readRDS(here("data/models/best_s.rds"))
 
 
 ```
+
+## Residual models
 
 ```{r residual models}
 ## calculate the bayesian linear regression
