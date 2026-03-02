@@ -221,83 +221,6 @@ dat_summ = dat %>%
 rm("lambdas", "dw_dat", "dw_dat_temp", "sampleParams") 
 ```
 
-## Environmental models
-
-```{r environmental models}
-
-output =
-  capture.output(
-    brm(
-      bf(lb_est ~ log_gpp_s + (1 | site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 5000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_gpp"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-    )
-  )
-
-b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
-
-b_gpp_cond = conditional_effects(b_gpp_full_lmm) %>% 
-  flatten %>% data.frame
-
-b_gpp_lm_fix = fixef(b_gpp_full_lmm)[2, 'Estimate']
-perc_pos_gpp = ecdf(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s))
-1 - perc_pos_gpp(0)
-quantile(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s), c(0.025, 0.975))
-
-
-output =
-  capture.output(
-    brm(
-      bf(lb_est ~ mat_s + (1 | site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 5000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_mat"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-    )
-  )
-
-b_mat_full_lmm = readRDS(here("data/models/b_mat.rds"))
-
-output =
-  capture.output(
-    brm(
-      bf(lb_est ~ log_om_s + (1 | site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 5000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_om"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-    )
-  )
-
-b_om_full_lmm = readRDS(here("data/models/b_om.rds"))
-
-
-
-```
-
 ## Richness models
 
 ```{r richness models}
@@ -318,66 +241,46 @@ output =
       )
     )
 
-output = 
-  capture.output(
-    brm(
-      bf(lb_est ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 2000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_s_full"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-      )
-    )
-
-b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
-
-b_s_lm = readRDS(here("data/models/b_s.rds"))
-# bayes_R2(b_s_lm)
+b_s_lmm = readRDS(here("data/models/b_s.rds"))
+bayes_R2(b_s_lmm)
 # bayes_factor(b_s_full_lmm, b_s_lm)
-b_s_cond = conditional_effects(b_s_lm) %>% flatten %>% data.frame
-b_s_lm_int =fixef(b_s_lm)[1,'Estimate']
-b_s_lm_fix = fixef(b_s_full_lmm)[2, 'Estimate']
-b_s_lm_pred = predict(b_s_lm, newdata = dat %>% select(site_id, hill_0))
+b_s_cond = conditional_effects(b_s_lmm) %>% flatten %>% data.frame
+b_s_lmm_int =fixef(b_s_lmm)[1,'Estimate']
+b_s_lmm_fix = fixef(b_s_full_lmm)[2, 'Estimate']
+b_s_lmm_pred = predict(b_s_lmm, newdata = dat %>% select(site_id, hill_0))
 
-perc_pos_hill = ecdf(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')$b_loghill_0))
+perc_pos_hill = ecdf(unlist(as_draws_df(b_s_lmm, variable = 'b_loghill_0')$b_loghill_0))
 1 - perc_pos_hill(0.001)
-quantile(unlist(as_draws_df(b_s_full_lmm, variable = 'b_loghill_0')$b_loghill_0), c(0.025, 0.975))
+quantile(unlist(as_draws_df(b_s_lmm, variable = 'b_loghill_0')$b_loghill_0), c(0.025, 0.975))
 
 
 b_s_pred = dat %>%
    modelr::data_grid(site_id = site_id,
             hill_0 = hill_0) %>%
-  add_epred_draws(b_s_lm, ndraws = 100, re_formula = NA)
+  add_epred_draws(b_s_lmm, ndraws = 100, re_formula = NA)
 
-b_breaks = seq.int(round(min(log(dat$b_est), na.rm = TRUE)), round(max(log(dat$b_est), na.rm = TRUE)), by = 2)
+b_breaks = seq.int(round(min(dat$lb_est, na.rm = TRUE)), round(max(dat$lb_est, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 # S_breaks = seq.int(floor(min(log(dat$hill_0))), ceiling(max(log(dat$hill_0))), by = 0.25)
 S_breaks = log(c(25, 50, 75, 100, 125, 150))
 S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
-s_text_annotation = paste("~Theta ==",eval(round(b_s_lm_fix,2)))
+s_text_annotation = paste("~Theta ==",eval(round(b_s_lmm_fix,2)))
 
 b_s_pred_plot = b_s_pred %>% 
   ggplot()+
   # geom_path(aes(x = log(hill_0), y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
   geom_ribbon(data = b_s_cond, aes(x = log(hill_0), ymin = lower__, ymax = upper__), fill = 'grey', alpha = 0.5)+
   geom_path(data = b_s_cond , aes(x = log(hill_0), y = estimate__), color = 'darkgrey', linewidth = 1)+
-  geom_point(data = dat, aes(x = log(hill_0), y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
+  geom_point(data = dat, aes(x = log(hill_0), y = lb_est, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
   geom_point(data = dat %>% summarise(hill_0 = mean(hill_0),
                                               lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
              aes(x = log(hill_0), y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
   scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
                      breaks = S_breaks,
                      labels = S_labels,
-                     limits = c(3.2,4.85))+
-  scale_y_continuous(name = expression("Biomass (mg"~m^-2*")"),
-                     limits = c(7.675,16.22),
+                     limits = c(3.2,5))+
+  scale_y_continuous(name = expression("Biomass (mg "~m^-2*")"),
+                     limits = c(7.675,20),
                      breaks = b_breaks,
                      labels = b_labels
   )+
@@ -397,10 +300,10 @@ saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
 output = 
   capture.output(
     brm(
-      bf(lb_est ~ lmbar_b_met + (1 + lmbar_b_met| site_id)),
+      bf(lb_est ~ lmbar_n_met + (1 + lmbar_n_met| site_id)),
       data = dat,
       family = gaussian(link = 'identity'),
-      iter = 3000,
+      iter = 5000,
       thin = 1,
       file_refit = 'on_change',
       file = here("data/models/b_m"),
@@ -411,16 +314,43 @@ output =
       )
     )
 
-b_m_lm = readRDS(here("data/models/b_m.rds"))
-b_m_lm_int =fixef(b_m_lm)[1,'Estimate']
-b_m_lm_fix = fixef(b_m_lm)[2, 'Estimate']
-b_m_cond = conditional_effects(b_m_lm) %>% flatten %>% data.frame
+b_m_lmm = readRDS(here("data/models/b_m.rds"))
+bayes_R2(b_m_lmm)
+
+b_m_lmm_int =fixef(b_m_lmm)[1,'Estimate']
+b_m_lmm_fix = fixef(b_m_lmm)[2, 'Estimate']
+b_m_cond = conditional_effects(b_m_lmm) %>% flatten %>% data.frame
 # b_m_lm_pred = predict(b_m_lm, newdata = dat %>% select(site_id, lmbar_b_met))
 
-b_m_pred = dat %>% 
+## remove the two streams with no fish
+output = 
+  capture.output(
+    brm(
+      bf(lb_est ~ lmbar_n_met + (1 + lmbar_n_met| site_id)),
+      data = dat %>% filter(site_id %ni% c('CARI','OKSR')),
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_m_no-outliers"),
+      control = list(adapt_delta = 0.999),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+
+b_m_lmm_outliers = readRDS(here("data/models/b_m_no-outliers.rds"))
+bayes_R2(b_m_lmm_outliers)
+
+b_m_lmm_outliers_int =fixef(b_m_lmm_outliers)[1,'Estimate']
+b_m_lmm_outliers_fix = fixef(b_m_lmm_outliers)[2, 'Estimate']
+b_m_outliers_cond = conditional_effects(b_m_lmm_outliers) %>% flatten %>% data.frame
+
+b_m_outliers_pred = dat %>% 
   modelr::data_grid(site_id = site_id,
-            lmbar_b_met = lmbar_b_met) %>% 
-  add_epred_draws(b_m_lm, ndraws = 100, re_formula = NA)
+            lmbar_n_met = lmbar_n_met) %>% 
+  add_epred_draws(b_m_lmm_outliers, ndraws = 100, re_formula = NA)
 
 b_breaks = seq.int(round(min(dat$lb_est, na.rm = TRUE)), round(max(dat$lb_est, na.rm = TRUE)), by = 2)
 b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
@@ -429,23 +359,26 @@ b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
 M_breaks = log(c(0.1,1,10,100,1000))
 M_labels = exp(M_breaks)#format(exp(M_breaks), scientific = FALSE, digits = NULL, nsmall = 0)
 
-m_text_annotation = paste("~Beta ==",eval(round(b_m_lm_fix,2)))
+m_text_annotation = paste("~Beta ==",eval(round(b_m_lmm_fix,2)))
 
 b_m_pred_plot = b_m_pred %>% 
   ggplot()+
-  geom_ribbon(data = b_m_cond, aes(x = lmbar_b_met, ymin = lower__, ymax= upper__), fill = 'grey', alpha = 0.5)+
-  geom_path(data = b_m_cond, aes(x = lmbar_b_met, y = estimate__), color = 'darkgrey', linewidth = 1)+
+  geom_ribbon(data = b_m_cond, aes(x = lmbar_n_met, ymin = lower__, ymax= upper__), fill = 'grey', alpha = 0.5)+
+  geom_path(data = b_m_cond, aes(x = lmbar_n_met, y = estimate__), color = 'darkgrey', linewidth = 1)+
+  #add outliers regression in 
+    geom_ribbon(data = b_m_outliers_cond, aes(x = lmbar_n_met, ymin = lower__, ymax= upper__), fill = 'darkgreen', alpha = 0.5)+
+  geom_path(data = b_m_outliers_cond, aes(x = lmbar_n_met, y = estimate__), color = 'darkgreen', linewidth = 1)+
   # geom_path(aes(x = lmbar_b_met, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
-  geom_point(data = dat, aes(x = lmbar_b_met, y = lb_m2, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
-  geom_point(data = dat %>% summarise(lmbar_b_met = mean(lmbar_b_met),
+  geom_point(data = dat, aes(x = lmbar_n_met, y = lb_est, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
+  geom_point(data = dat %>% summarise(lmbar_n_met = mean(lmbar_n_met),
                                               lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
-             aes(x = lmbar_b_met, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
-  scale_x_continuous(name = expression(over(,M^0.75)["B-weighed"]*"(mg "*ind^-1*")"),
+             aes(x = lmbar_n_met, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
+  scale_x_continuous(name = expression(over(,M^0.75)["N-weighed"]*"(mg "*ind^-1*")"),
                      breaks = M_breaks,
                      labels = M_labels,
-                     limits = c(-0.38,7.6))+
+                     limits = c(-2.5,8))+
   scale_y_continuous(name = expression("Biomass (mg "~m^-2*")"),
-                     limits = c(7.675,16.22),
+                     limits = c(5.675,20),
                      breaks = b_breaks,
                     labels = b_labels
   )+
@@ -871,6 +804,109 @@ NM_bwt_pred = dat %>%
   mutate(pred = NM_bwt_int + lmbar_b_s*-1) %>% 
   left_join(dat %>% select( site_id, lmbar_b_s, ln_tot_s, lambda_med, log_gpp_s,log_om_s), by = 'lmbar_b_s') %>% 
   mutate(resid_theory = ln_tot_s - pred)
+
+```
+
+## Full model 
+
+```{r full richness lambda model}
+
+output = 
+  capture.output(
+    brm(
+      bf(lb_est ~ log(hill_0) + lambda_med + (1 + lambda_med |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 2000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_s_full"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+      )
+    )
+
+b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
+
+```
+
+## Environmental models
+
+```{r environmental models}
+
+output =
+  capture.output(
+    brm(
+      bf(lb_est ~ log_gpp_s + I(log_gpp_s^2) + (1 | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_gpp"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+    )
+  )
+
+b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
+
+b_gpp_cond = conditional_effects(b_gpp_full_lmm) %>% 
+  flatten %>% data.frame
+
+b_gpp_lm_fix = fixef(b_gpp_full_lmm)[2, 'Estimate']
+perc_pos_gpp = ecdf(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s))
+1 - perc_pos_gpp(0)
+quantile(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s), c(0.025, 0.975))
+
+
+output =
+  capture.output(
+    brm(
+      bf(lb_est ~ mat_s + (1 | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_mat"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+    )
+  )
+
+b_mat_full_lmm = readRDS(here("data/models/b_mat.rds"))
+
+output =
+  capture.output(
+    brm(
+      bf(lb_est ~ log_om_s + (1 | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_om"),
+      control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312,
+      save_pars = save_pars(all = TRUE)
+    )
+  )
+
+b_om_full_lmm = readRDS(here("data/models/b_om.rds"))
+
+
 
 ```
 

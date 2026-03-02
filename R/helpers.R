@@ -12,6 +12,7 @@ library(tidybayes)
 library(brms)
 library(ubms)
 library(vegan)
+'%ni%' <- Negate('%in%')
 i_am("R/helpers.R")
 update = FALSE
 rerun = FALSE

@@ -636,3 +636,40 @@ calc_abundance_variance <- function(lambda, c, x_min, x_max) {
 variance_N <- calc_abundance_variance(lambda, c, x_min, x_max)
 
 cat("Explicitly calculated variance in abundances (N):", variance_N, "\n")
+
+
+# compute the explicit variance in log(N) and log(M)
+pareto_var_logN <- function(lambda, x_min, x_max) {
+  
+  Var_logM <- pareto_var_logM(lambda, x_min, x_max)
+  
+  Var_logN <- lambda^2 * Var_logM
+  
+  return(Var_logN)
+}
+
+pareto_var_logM <- function(lambda, x_min, x_max) {
+  
+  if (abs(lambda + 1) < 1e-10)
+    stop("lambda near -1 requires special log-form.")
+  
+  A <- x_max^(lambda + 1)
+  B <- x_min^(lambda + 1)
+  D <- A - B
+  
+  # E[log M]
+  ElogM <- (A * log(x_max) - B * log(x_min)) / D -
+    1 / (lambda + 1)
+  
+  g <- function(x) {
+    (log(x))^2 -
+      2 * log(x) / (lambda + 1) +
+      2 / (lambda + 1)^2
+  }
+  
+  ElogM2 <- (A * g(x_max) - B * g(x_min)) / D
+  
+  Var_logM <- ElogM2 - ElogM^2
+  
+  return(Var_logM)
+}
