@@ -165,6 +165,7 @@ dat = sampleParams %>%
   # xmin = ..4
   # xmax = ..5
   # n_tot = ..6
+  filter(xmin_c < 1.5) %>% 
     mutate(m_old = pmap_dbl(.,~pareto_expectation(lambda = ..27,
                                                   xmin = ..4,
                                                   xmax = ..5)),
@@ -395,7 +396,7 @@ saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
 
 output = 
   capture.output(
-    brm(bf(ln_est~lmbar_b_met_s + (1 + lmbar_b_met_s|site_id)),
+    brm(bf(ln_tot~lmbar_b_met + (1 + lmbar_b_met|site_id)),
         data = dat,
         family = gaussian(link = 'identity'),
         iter = 2000,
@@ -408,15 +409,15 @@ output =
         )
     )
 NM_met_bwt = readRDS(here("data/models/NM_met_bwt.rds"))
-# plot(conditional_effects(NM_met_bwt))
+plot(conditional_effects(NM_met_bwt))
 # b_m_cond = conditional_effects(b_m_lm) %>% flatten %>% data.frame
 NM_met_bwt_int =fixef(NM_met_bwt)[1,'Estimate']
 
 
 NM_met_bwt_pred = dat %>% 
-  modelr::data_grid(lmbar_b_met_s = lmbar_b_met_s) %>% 
+  modelr::data_grid(lmbar_b_met = lmbar_b_met_) %>% 
   mutate(pred_s = NM_met_bwt_int + lmbar_b_met_s*-1) %>% 
-  left_join(dat %>% select(site_id, lmbar_b_met_s, ln_tot_s, lambda_med), by = 'lmbar_b_met_s') %>% 
+  left_join(dat %>% select(site_id, lmbar_b_met_s, ln_est, lambda_med), by = 'lmbar_b_met_s') %>% 
   mutate(lmbar_b_met = lmbar_b_met_s * sd(dat$lmbar_b_met, na.rm = TRUE) + mean(dat$lmbar_b_met, na.rm = TRUE),
          ln_tot = ln_tot_s * sd(dat$ln_tot, na.rm = TRUE) + mean(dat$ln_tot, na.rm = TRUE),
          pred = pred_s * sd(dat$ln_tot, na.rm = TRUE) + mean(dat$ln_tot,na.rm = TRUE)) %>% 
