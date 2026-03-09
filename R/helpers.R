@@ -144,3 +144,55 @@ merge_macrofish_dates = function(mDf = NULL, fDf = NULL, limit = 30,...){
   
   return(mfList)
 }
+
+#'
+#'
+#'
+compute_size_spectra <- function(posterior, M_range = NULL, n_points = 100) {
+  # posterior: data frame or matrix with columns mu_S, sigma_S, lambda
+  # M_range: vector of min/max body sizes (if NULL, inferred from mu_S ± 4*sigma_S)
+  
+  mu_post <- posterior$mu_S
+  sigma_post <- posterior$sigma_S
+  lambda_post <- posterior$lambda
+  
+  # define range of M if not provided
+  if(is.null(M_range)) {
+    M_min <- exp(min(mu_post - 4*sigma_post))
+    M_max <- exp(max(mu_post + 4*sigma_post))
+  } else {
+    M_min <- M_range[1]
+    M_max <- M_range[2]
+  }
+  
+  M_seq <- exp(seq(log(M_min), log(M_max), length.out = n_points))
+  
+  # Initialize matrices to store slopes
+  beta_mat <- matrix(NA, nrow = nrow(posterior), ncol = n_points)
+  gamma_mat <- matrix(NA, nrow = nrow(posterior), ncol = n_points)
+  
+  for(i in 1:nrow(posterior)) {
+    beta_mat[i, ] <- - (log(M_seq) - mu_post[i]) / sigma_post[i]^2
+    gamma_mat[i, ] <- beta_mat[i, ] + lambda_post[i]
+  }
+  
+  # Compute posterior means and credible intervals
+  beta_mean <- apply(beta_mat, 2, mean)
+  beta_ci <- t(apply(beta_mat, 2, quantile, probs = c(0.025,0.975)))
+  
+  gamma_mean <- apply(gamma_mat, 2, mean)
+  gamma_ci <- t(apply(gamma_mat, 2, quantile, probs = c(0.025,0.975)))
+  
+  # Return as data frame
+  df <- data.frame(
+    M = M_seq,
+    beta_mean = beta_mean,
+    beta_lower = beta_ci[,1],
+    beta_upper = beta_ci[,2],
+    gamma_mean = gamma_mean,
+    gamma_lower = gamma_ci[,1],
+    gamma_upper = gamma_ci[,2]
+  )
+  
+  return(df)
+}
