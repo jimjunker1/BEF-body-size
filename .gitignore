@@ -48,3 +48,5 @@ rsconnect/
 # MS temp files
 ~$*
 
+# ignore folder
+ignore/
