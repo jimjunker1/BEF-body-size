@@ -957,29 +957,56 @@ dat %>%
 ## Theory of body size--abundance
 
 # Methods
-## Study sites
 
-## Data sets
+We analyzed the community abundance, biomass, and size distributions using 670,816 individual body masses of fish and macroinvertebrates collected by the National Ecological Observatory Network (NEON) from 2016 to 2022. NEON is a continental-scale ecological sampling program that uses standardized, automated sensor measurements coupled with observational field data and biological collections repeated across seasons (spring, summer, autumn), years (2015 to present), and space (across North America) (Fig. 2). The final data set included 59,083 measures from 114 fish species and 611,733 measures from 1,125 macroinvertebrates taxonomic groups (typically genus or species). The samples were typically collected 2-3 times per year at each of 21 sites, resulting in a total of 115 unique collection events. Below we describe how the data sets were merged to contain both fish and macroinvertebrates. Further details including a schematic overview of this workflow along with a step-by-step example of the fish resampling procedure, is provided in the supplemental materials of [@gjoni2026].
 
-### Macros and fish
+### Macroinvertebrates
 
-### Environmental Variables
+NEON collected macroinvertebrate data via fixed-area samplers (e.g., Surber/Core/Kicknet) and measured insect body lengths to the nearest mm along with estimates of their density (individuals $m^{-2}$). While the samplers vary based on the stream characteristics (e.g., core samplers, Surber samplers, etc), all mesh sizes are the same (243 $\mu m$). Measurements of macroinvertebrate lengths spanned from 1 to 86 mm. We converted them to dry mass (mg) with published taxon-specific length-mass regressions [see @pomeranz2022]. 
 
-#### Temp
+### Fish
 
-#### GPP
+Fish were collected from each site twice per year (typically) using 3-pass removal electrofishing. For each collection, the first 50 fish per taxon were measured for wet mass (wm) in g (NEON 2022). We converted this to dry mass (dm) using the equation $dm = 0.2\times wm$ [@brey2010]. The remaining fish were tallied as a bulk count per species (without individual mass measures). Because individual body masses were measured only for a subset of individuals, raw measurements alone would not reflect “true” species abundances, particularly when total abundance varied widely among taxa. Using the three-pass depletion data, we estimated fish population density (individuals $m^{-2}$) in each collection using a multinomial Poisson depletion model [@royle2004]. We specified the model in R using the `ubms` package [@kellner2022]. The response variable was the number of fish caught per pass and the predictor variable was the collection id (site+date+reach = collection id). The model resulted in a population estimate for each collection, which we converted to individuals $m^{-2}$ by dividing each estimate by the sampled area (mean stream width x length of the electrofishing sample). We then multiplied that population estimate by the relative abundance of each fish species, resulting in an estimated density (individuals $m^{-2}$) of each fish species in each collection. Finally, we merged those estimates with the dry mass measurements and resampled the dry mass measures with replacement, weighted by species-specific density. This ensured that more abundant species contributed proportionally more individuals to the reconstructed size distribution, even when the number of measured body sizes was similar across taxa. An example of this procedure is given in Fig. S2 of [@gjoni2026]. Weighting by individuals per no/10,000 $m^{-2}$ instead of individuals $M^{-1}$ was necessary to ensure that enough body sizes were sampled (i.e., individuals $m^{-2}$ was typically <1). For each collection, we then summed the total number of individual body sizes and averaged their density estimates, resulting in a dataset containing individual-level body sizes (rather than species mean) estimates and their associated density for each collection [@gjoni2026].
 
-#### OM
+### Combining fish and macroinvertebrates
 
-## Statistical analyses
+Fish and macroinvertebrates were collected on different dates, with macroinvertebrates collected three times per year and fish collected twice. Therefore, to combine fish and macroinvertebrate samples, we limited the data to only collections that occurred within 30 days of each other. For example, if macroinvertebrates were collected on June 10 and fish collected on June 20, those samples were combined. If more than one sample was in the 30-day window (e.g., another fish collection on June 21), we selected the samples collected closest in time to each other in time to the paired collection, retaining only the most recent collection. The resulting data set contains body sizes ranging nine orders of magnitude (0.003 to 200,000 mg dry mass) along with their densities. We used this data set to estimate total community abundance (individuals $m^{-2}$), biomass (mg $m^{-2}$), and the individual size distributions (see Data Analysis). 
 
-### community N~M
+## Environmental Data
 
-Further, the theories of self-thinning and energy equivalence upon which the CCSR is based upon derive from individual energy use, which body size is only a proxy for. We can adjust body mass, *sensu stricto*, to metabolic mass by adjusting for the metabolic scaling exponent, $M^{\alpha}$, where $\alpha$ usually takes values in the range of 0.6 -- 0.75. Also, care must be taken about how metabolic mass is calculated. Because, individual metabolism is a non-linear function with mass, $f(\overline{x}) \neq \overline{f(x)}$ [@Jensen 1979] and the proper value to use is to first calculate metabolic mass for each individual, $m^{\alpha}_{i}$, and then average across all individual metabolic mass measurements for a sampling timepoint. The difference in these measurements can be observed below.
+### Temperature
 
-### truncated pareto
+To estimate mean annual stream temperature for each of the 21 sites, we obtained water temperature readings collected every four hours from 2016 to 2021 using the NEON data (Table S12). We removed data that did not pass NEON quality control checks as noted by NEON. Specifically, we  removed data that appeared unreasonably such as low (< -5°C) or high (> 50°C) temperatures. Some data for Alaskan streams is missing when the water is frozen. For those data, we assumed a temperature of 0°C. The resulting dataset contained 93,930 temperature readings. Temperature was modeled using a Bayesian generalized additive mixed model (GAMM), with a smooth term for temperature and year included as a random effect. Although the model has a generalized additive structure, it was fit within a Bayesian framework, allowing direct estimation of posterior distributions for the temperature effect. To reduce the data size for modeling, we estimated the mean weekly temperature and modeled that as a function of date and site using a Bayesian generalized additive mixed model with a Gaussian likelihood and year as a varying intercept. Mean weekly temperature was centered prior to modeling. This approach allowed us to have a posterior distribution of temperature predictions on each day over three years. From that posterior distribution, we calculated the mean annual temperature and standard deviation (Table 1) for each site.
 
-### Mixed-effects models were fit with
+### Gross Primary Production
+
+We estimated regimes of annual gross primary production (GPP, g C m-2 y-1) through a multistep ensemble model process (https://github.com/jswesner/neon_size_spectra-slim). Daily time series of NEON sensor-based data for temperature, stream discharge, and oxygen concentration (see Table S12) were checked for data quality flags and visually inspected to identify potential errant data. We then estimated daily GPP from cleaned time series with maximum likelihood estimation through 15 different methods using the `streamMetabolizer` package (Appling et al. 2018). Methods varied in respect to discharge–gas exchange, photosynthetic rate–light, and photosynthetic rate–temperature relationships. From this model suite, we first calculated root mean squared error (RMSE) based on pointwise differences between predicted and observed daily oxygen series. This model suite was reduced by removing models that yielded unreasonably high estimates based on mean daily GPP (>13,000 g C m-2 y-1), correlation coefficients >0.95 between reaeration and ecosystem respiration, and particularly poor fits based on RMSE. From this filtered model suite, we created an ensemble model weighted by relative RMSE. Finally, to develop a general model of the GPP regime at each site, we fit a hierarchical generalized additive mixed model (GAMM) to ensemble estimated GPP by ‘day of year’ with ‘year’ treated as a random effect term. We summed the estimated ‘day of year’ fixed effect to quantify annual GPP for all sites. Annual GAMMs were fit with the `brms` package [@bürkner2017] with smoothing functions from the `mgcv` package [@wood2017].
+
+### Organic Matter
+
+We estimated the standing stock of organic matter from 45 unsorted bulk benthic samples in the NEON biorepository (at least two samples per site) [@yule2020]. The samples were collected at the same time as macroinvertebrate samples, using the same collection techniques (i.e., Surber sampler, core sampler). We obtained the raw samples from NEON and first removed macroinvertebrates. We dried the remaining organic matter at 60°C for >48 hours to bring to a constant mass. We then combusted samples at 500°C for four hours before reweighing to determine total organic matter mass. Samples were scaled to areal mass ($g \ m^{-2}$) by dividing total organic mass by the benthic area sampled (e.g., the area of the Surber sampler, core sampler, etc.).
+
+## Data Analysis
+
+To examine how the ISD varied as a function of temperature and resources, we used a Bayesian generalized linear mixed model with a truncated Pareto likelihood. A description and justification of this modelling approach for ISD’s is given in [@wesner2024]. The model structure was:
+$$x_ijkl \sim f(x_{jkl}; λ_{jkl},x_{min}_{jkl},x_{max}_{jkl}, counts_{ijkl})$$
+$$λ_{jkl}  = a + βZ + γ_{k:j}+ γ_{l} + b_{l}Z$$
+
+where $x_{ijkl}$ is the $i$th body size from sample $j$ in site $k$ and year $l$. The likelihood $f(…)$ is a truncated Pareto with a single free parameter λ_$jkl$, the exponent of the ISD. $x_{min}_{jkl}$ and $x_{max}_{jkl}$ are the minimum and maximum body sizes in each sample, site, and year. 
+$x_{min}_{jkl}$ was chosen as the smallest body size in each sample for which the data most closely match a power law using the `estimate_xmin()` function from the `poweRlaw` package [@gillespie2024]. This method ensures that estimates of $\lambda$ are not biased from undersampling of small individuals [@virkar2014]. Each body size has a corresponding density in units of number individuals $m^{-2}$, represented by $counts_{ijkl}$, as described in [@edwards2017a]. $\lambda_{jkl}$ is modeled as a linear function of an intercept $\alpha$ and $\beta Z$ represents the single, two, and three-way interactions of the $Z$ predictors of mean annual temperature, mean annual GPP, and standing stock organic matter. All predictors were standardized as z-scores prior to fitting. Varying intercepts are included for individual sample $j$ nested within sites ($k_{\gamma_{k:j}$) and year ($\gamma_{l}$) along with varying slopes, including interactions, by year $b_{l} Z$. To improve sampling efficiency, the varying intercepts were modeled using non-centered parameterization, which is excluded here for clarity, but is present in the Stan model code: https://github.com/jswesner/neon_size_spectra-slim.
+
+Priors for the intercept were $Normal(-2, 0.5)$, chosen based on theoretical predictions [@reuman2008] and previous analysis of ISD values in streams [@pomeranz2022]. Priors for each $\beta$ parameter were set to $Normal(0, 0.2)$. Priors for the $q$ varying intercepts were $Normal(0, sq)$, with each $sq$ hyperprior set to $Exponential(7)$. These priors were chosen based on prior predictive simulation [@wesner2021] to center the prior probabilities of $\lambda$ between about -2.5 to -1 while still allowing probabilities at very large (e.g., 1) or small values (e.g., -4) (Fig. S31).
+
+### Cross community scaling ($N \sim M$)
+
+To estimate the cross community scaling relationship, we first went through a process to account for systematic undersampling of small individuals in the data set. This is a known problem,
+
+
+
+
+We fit all models in `rstan` [@stan2024] via the `brms` [@bürkner2017] and `isdbayes` [@wesner2023a] packages in R. Model fit was checked using posterior predictive checks and prior influence was checked using prior predictive simulation (Fig. S3-5).
+
+
 
 # Results
 

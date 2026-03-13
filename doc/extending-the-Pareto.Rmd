@@ -89,3 +89,135 @@ such that our total sample, i.e., $N_{cutoff}$, integrated over [$m_{min}$,$m_{m
 $$N_{cutoff} = \int_{m_{min}}^{m_{max}} c m^{\lambda} dm$$
 
 <\details>
+
+We can use simlated data to confirm this approach 
+
+############################################################
+# Function provided earlier
+############################################################
+
+estimate_pareto_N = function(n, lambda, xmin, xmin2, xmax){
+  lambdaPlus = lambda + 1
+  n * (xmax^(lambdaPlus) - xmin2^(lambdaPlus)) /
+    (xmax^(lambdaPlus) - xmin^(lambdaPlus))
+}
+
+############################################################
+# Random generator for truncated Pareto
+############################################################
+
+rtrunc_pareto <- function(n, lambda, xmin, xmax){
+
+  u <- runif(n)
+
+  lambdaPlus <- lambda + 1
+
+  x <- (u * (xmax^lambdaPlus - xmin^lambdaPlus) +
+        xmin^lambdaPlus)^(1/lambdaPlus)
+
+  return(x)
+}
+
+############################################################
+# Single simulation
+############################################################
+
+simulate_once <- function(N_true, lambda, xmin, xmax, threshold){
+
+  # simulate full community
+  mass <- rtrunc_pareto(N_true, lambda, xmin, xmax)
+
+  # observed individuals (undersampling small sizes)
+  observed <- mass[mass >= threshold]
+
+  n_obs <- length(observed)
+
+  # estimate abundance using Pareto extrapolation
+  N_est <- estimate_pareto_N(
+              n = n_obs,
+              lambda = lambda,
+              xmin = threshold,
+              xmin2 = xmin,
+              xmax = xmax
+            )
+
+  data.frame(
+    threshold = threshold,
+    N_true = N_true,
+    N_obs = n_obs,
+    N_est = N_est
+  )
+}
+
+############################################################
+# Simulation experiment
+############################################################
+
+run_simulation <- function(
+  nrep = 500,
+  N_true = 10000,
+  lambda = -1.8,
+  xmin = 1,
+  xmax = 100,
+  thresholds = c(2,3,5,10)
+){
+
+  results <- list()
+
+  for(t in thresholds){
+
+    sims <- replicate(
+      nrep,
+      simulate_once(N_true, lambda, xmin, xmax, t),
+      simplify = FALSE
+    )
+
+    results[[as.character(t)]] <- do.call(rbind, sims)
+  }
+
+  do.call(rbind, results)
+}
+
+############################################################
+# Run experiment
+############################################################
+
+set.seed(1)
+
+sim_results <- run_simulation(
+  nrep = 1000,
+  N_true = 10000,
+  lambda = -1.8,
+  xmin = 1,
+  xmax = 100,
+  thresholds = c(2,3,5,10)
+)
+
+############################################################
+# Evaluate performance
+############################################################
+
+sim_results$error <- sim_results$N_est - sim_results$N_true
+sim_results$rel_error <- sim_results$error / sim_results$N_true
+
+aggregate(
+  cbind(error, rel_error) ~ threshold,
+  data = sim_results,
+  FUN = mean
+)
+
+############################################################
+# Plot results
+############################################################
+
+library(ggplot2)
+
+ggplot(sim_results,
+       aes(x = factor(threshold),
+           y = rel_error)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 0,
+             linetype = "dashed") +
+  ylab("Relative error in estimated abundance") +
+  xlab("Sampling threshold") +
+  theme_bw()
