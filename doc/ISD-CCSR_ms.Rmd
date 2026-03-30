@@ -560,10 +560,10 @@ resid_s_lambda = readRDS(here('data/models/resid_s_lambda.rds'))
 
 b_resid_marg_lambda = ggeffects::predict_response(resid_s_lambda, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed') %>% 
   rename(lambda_med = 'x', resid_theory = 'predicted')
-plot(b_resid_marg_lambda)
+# plot(b_resid_marg_lambda)
 b_resid_marg_hill = ggeffects::predict_response(resid_s_lambda, terms = c('Lhill_0'), margin = 'marginalmeans', type = 'fixed') %>% 
   rename(Lhill_0 = 'x', resid_theory = 'predicted')
-plot(b_resid_marg_hill)
+# plot(b_resid_marg_hill)
 
 
 ### metabolic mass models
@@ -671,36 +671,36 @@ NM_bwt_resid %>%
 ## Richness predictions
 
 ```{r richness prediction}
-output = 
-  capture.output(
-    brm(
-      bf(lb_est ~ Lhill_0 + lambda_med + (1 + lambda_med |site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 2000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_s_full"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312
-      )
-    )
-
-b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
-bayes_R2(b_s_full_lmm)[1]
-
-# plot_predictions(b_s_full_lmm, condition = c('hill_0', 'lambda_med'), points = 1)
-
-# b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed')
-b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = dat %>% dplyr::select(Lhill_0), margin = 'marginalmeans', type = 'fixed')
-plot(b_m_marg)
-
-
-b_s_lmm_int =fixef(b_s_full_lmm)[1,'Estimate']
-b_s_lmm_hill = fixef(b_s_full_lmm)[2,'Estimate']
-b_s_lmm_lambda = fixef(b_s_full_lmm)[3, 'Estimate']
+# output = 
+#   capture.output(
+#     brm(
+#       bf(lb_est ~ Lhill_0 + lambda_med + (1 + lambda_med |site_id)),
+#       data = dat,
+#       family = gaussian(link = 'identity'),
+#       iter = 2000,
+#       thin = 1,
+#       file_refit = 'on_change',
+#       file = here("data/models/b_s_full"),
+#       control = list(adapt_delta = 0.99),
+#       chains = 4,
+#       cores = 4,
+#       seed = 1312
+#       )
+#     )
+# 
+# b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
+# bayes_R2(b_s_full_lmm)[1]
+# 
+# # plot_predictions(b_s_full_lmm, condition = c('hill_0', 'lambda_med'), points = 1)
+# 
+# # b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed')
+# b_m_marg = ggeffects::predict_response(b_s_full_lmm, terms = dat %>% dplyr::select(Lhill_0), margin = 'marginalmeans', type = 'fixed')
+# plot(b_m_marg)
+# 
+# 
+# b_s_lmm_int =fixef(b_s_full_lmm)[1,'Estimate']
+# b_s_lmm_hill = fixef(b_s_full_lmm)[2,'Estimate']
+# b_s_lmm_lambda = fixef(b_s_full_lmm)[3, 'Estimate']
 # b_s_lm_pred = predict(b_s_lm, newdata = dat %>% dplyr::select(site_id, hill_0))
 
 # b_s_full_pred = dat %>%
@@ -709,38 +709,38 @@ b_s_lmm_lambda = fixef(b_s_full_lmm)[3, 'Estimate']
 #             lambda_med = lambda_med) %>% 
 #   add_epred_draws(b_s_full_lmm, ndraws = 100, re_formula = NA)#~(1 + lambda_med |site_id))
 
-b_breaks = seq.int(round(min(dat$lb_est, na.rm = TRUE)), round(max(dat$lb_est, na.rm = TRUE)), by = 2)
-b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
-# S_breaks = seq.int(floor(min(log(dat$hill_0))), ceiling(max(log(dat$hill_0))), by = 0.25)
-
-lambda_breaks = c(-1.5, -2.0, -2.5, -3.0)
-lambda_labels = format(lambda_breaks, scientific = FALSE, digits = 2)
-lambda_text_annotation = paste0("(ln(B) | S)","$\\approx$",eval(round(b_s_lmm_lambda,2)),"$\\times$","\\lambda")
-
-b_lambda_pred_plot = b_m_marg %>% 
-  rename(lambda_med = x, lb_est = predicted) %>% 
-  ggplot()+
-  geom_ribbon(aes(x = lambda_med, ymin = conf.low, ymax = conf.high), fill = 'grey', alpha = 0.5)+
-  geom_path(aes(x = lambda_med, y = lb_est), color = 'darkgrey', linewidth = 1)+
-  geom_point(data = dat, aes(x = lambda_med, y = lb_est, fill = site_id), shape = 21, color = 'grey', alpha = 0.5)+
-  geom_point(data = dat %>% summarise(
-    lambda_med = mean(lambda_med, na.rm = TRUE),
-  lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
-  aes(x = lambda_med, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
-  scale_x_continuous(name = TeX(paste0("\\lambda")),#, expression("Species richness ("*Hill["q=0"]*")"),
-                     breaks = lambda_breaks,
-                     labels = lambda_labels,
-                     limits = c(-3.1,-1.25))+
-  scale_y_continuous(name = expression("Biomass (mg "~m^-2~")"),
-                     limits = c(7.675,16.22),
-                     breaks = b_breaks,
-                     labels = b_labels
-  )+
-  scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(lambda_text_annotation, output = 'character'), family = 'serif' )+
-  annotate('text', x = -Inf, y = Inf, vjust = 3, hjust= 0, parse = TRUE, label = TeX(paste0("Full model: $r^2$","=",round(bayes_R2(b_s_full_lmm)[1],2)), , output = 'character'), family = 'serif')+
-  theme(legend.position = 'none');b_lambda_pred_plot
-saveRDS(b_lambda_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
+# b_breaks = seq.int(round(min(dat$lb_est, na.rm = TRUE)), round(max(dat$lb_est, na.rm = TRUE)), by = 2)
+# b_labels = format(exp(b_breaks), scientific = TRUE, digits = 2)
+# # S_breaks = seq.int(floor(min(log(dat$hill_0))), ceiling(max(log(dat$hill_0))), by = 0.25)
+# 
+# lambda_breaks = c(-1.5, -2.0, -2.5, -3.0)
+# lambda_labels = format(lambda_breaks, scientific = FALSE, digits = 2)
+# lambda_text_annotation = paste0("(ln(B) | S)","$\\approx$",eval(round(b_s_lmm_lambda,2)),"$\\times$","\\lambda")
+# 
+# b_lambda_pred_plot = b_m_marg %>% 
+#   rename(lambda_med = x, lb_est = predicted) %>% 
+#   ggplot()+
+#   geom_ribbon(aes(x = lambda_med, ymin = conf.low, ymax = conf.high), fill = 'grey', alpha = 0.5)+
+#   geom_path(aes(x = lambda_med, y = lb_est), color = 'darkgrey', linewidth = 1)+
+#   geom_point(data = dat, aes(x = lambda_med, y = lb_est, fill = site_id), shape = 21, color = 'grey', alpha = 0.5)+
+#   geom_point(data = dat %>% summarise(
+#     lambda_med = mean(lambda_med, na.rm = TRUE),
+#   lb_est = mean(lb_est, na.rm = TRUE),.by = 'site_id'),
+#   aes(x = lambda_med, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
+#   scale_x_continuous(name = TeX(paste0("\\lambda")),#, expression("Species richness ("*Hill["q=0"]*")"),
+#                      breaks = lambda_breaks,
+#                      labels = lambda_labels,
+#                      limits = c(-3.1,-1.25))+
+#   scale_y_continuous(name = expression("Biomass (mg "~m^-2~")"),
+#                      limits = c(7.675,16.22),
+#                      breaks = b_breaks,
+#                      labels = b_labels
+#   )+
+#   scale_fill_viridis(discrete = TRUE)+
+#   annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(lambda_text_annotation, output = 'character'), family = 'serif' )+
+#   annotate('text', x = -Inf, y = Inf, vjust = 3, hjust= 0, parse = TRUE, label = TeX(paste0("Full model: $r^2$","=",round(bayes_R2(b_s_full_lmm)[1],2)), , output = 'character'), family = 'serif')+
+#   theme(legend.position = 'none');b_lambda_pred_plot
+# saveRDS(b_lambda_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
 
 # b_s_resid%>% 
 #   ungroup %>% 
@@ -840,25 +840,25 @@ saveRDS(b_lambda_pred_plot, here('doc/plots/b_lambda_pred_plot.rds'))
 
 ```{r full richness lambda model}
 
-output = 
-  capture.output(
-    brm(
-      bf(lb_est ~ Lhill_0 + lambda_med + (1 + lambda_med |site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 2000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_s_full"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-      )
-    )
-
-b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
+# output = 
+#   capture.output(
+#     brm(
+#       bf(lb_est ~ Lhill_0 + lambda_med + (1 + lambda_med |site_id)),
+#       data = dat,
+#       family = gaussian(link = 'identity'),
+#       iter = 2000,
+#       thin = 1,
+#       file_refit = 'on_change',
+#       file = here("data/models/b_s_full"),
+#       control = list(adapt_delta = 0.99),
+#       chains = 4,
+#       cores = 4,
+#       seed = 1312,
+#       save_pars = save_pars(all = TRUE)
+#       )
+#     )
+# 
+# b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
 
 ```
 
@@ -866,74 +866,74 @@ b_s_full_lmm = readRDS(here("data/models/b_s_full.rds"))
 
 ```{r environmental models}
 
-output =
-  capture.output(
-    brm(
-      bf(lb_est ~ log_gpp_s + I(log_gpp_s^2) + (1 | site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 5000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_gpp"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-    )
-  )
-
-b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
-
-b_gpp_cond = conditional_effects(b_gpp_full_lmm) %>% 
-  flatten %>% data.frame
-
-b_gpp_lm_fix = fixef(b_gpp_full_lmm)[2, 'Estimate']
-perc_pos_gpp = ecdf(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s))
-1 - perc_pos_gpp(0)
-quantile(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s), c(0.025, 0.975))
-
-
-output =
-  capture.output(
-    brm(
-      bf(lb_est ~ mat_s + (1 | site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 5000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_mat"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-    )
-  )
-
-b_mat_full_lmm = readRDS(here("data/models/b_mat.rds"))
-
-output =
-  capture.output(
-    brm(
-      bf(lb_est ~ log_om_s + (1 | site_id)),
-      data = dat,
-      family = gaussian(link = 'identity'),
-      iter = 5000,
-      thin = 1,
-      file_refit = 'on_change',
-      file = here("data/models/b_om"),
-      control = list(adapt_delta = 0.99),
-      chains = 4,
-      cores = 4,
-      seed = 1312,
-      save_pars = save_pars(all = TRUE)
-    )
-  )
-
-b_om_full_lmm = readRDS(here("data/models/b_om.rds"))
+# output =
+#   capture.output(
+#     brm(
+#       bf(lb_est ~ log_gpp_s + I(log_gpp_s^2) + (1 | site_id)),
+#       data = dat,
+#       family = gaussian(link = 'identity'),
+#       iter = 5000,
+#       thin = 1,
+#       file_refit = 'on_change',
+#       file = here("data/models/b_gpp"),
+#       control = list(adapt_delta = 0.99),
+#       chains = 4,
+#       cores = 4,
+#       seed = 1312,
+#       save_pars = save_pars(all = TRUE)
+#     )
+#   )
+# 
+# b_gpp_full_lmm = readRDS(here("data/models/b_gpp.rds"))
+# 
+# b_gpp_cond = conditional_effects(b_gpp_full_lmm) %>% 
+#   flatten %>% data.frame
+# 
+# b_gpp_lm_fix = fixef(b_gpp_full_lmm)[2, 'Estimate']
+# perc_pos_gpp = ecdf(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s))
+# 1 - perc_pos_gpp(0)
+# quantile(unlist(as_draws_df(b_gpp_full_lmm, variable = 'b_log_gpp_s')$b_log_gpp_s), c(0.025, 0.975))
+# 
+# 
+# output =
+#   capture.output(
+#     brm(
+#       bf(lb_est ~ mat_s + (1 | site_id)),
+#       data = dat,
+#       family = gaussian(link = 'identity'),
+#       iter = 5000,
+#       thin = 1,
+#       file_refit = 'on_change',
+#       file = here("data/models/b_mat"),
+#       control = list(adapt_delta = 0.99),
+#       chains = 4,
+#       cores = 4,
+#       seed = 1312,
+#       save_pars = save_pars(all = TRUE)
+#     )
+#   )
+# 
+# b_mat_full_lmm = readRDS(here("data/models/b_mat.rds"))
+# 
+# output =
+#   capture.output(
+#     brm(
+#       bf(lb_est ~ log_om_s + (1 | site_id)),
+#       data = dat,
+#       family = gaussian(link = 'identity'),
+#       iter = 5000,
+#       thin = 1,
+#       file_refit = 'on_change',
+#       file = here("data/models/b_om"),
+#       control = list(adapt_delta = 0.99),
+#       chains = 4,
+#       cores = 4,
+#       seed = 1312,
+#       save_pars = save_pars(all = TRUE)
+#     )
+#   )
+# 
+# b_om_full_lmm = readRDS(here("data/models/b_om.rds"))
 
 
 
@@ -941,18 +941,7 @@ b_om_full_lmm = readRDS(here("data/models/b_om.rds"))
 
 
 
-```{r NB met comparison}
 
-dat %>% 
-  ggplot()+
-  geom_point(aes(x = lmbar_n_met, lmbar_b_met, color = site_id), size = 1.3)+
-  scale_color_viridis(discrete = TRUE)+
-  geom_abline()+
-  scale_x_continuous(name = expression(log*"("*bar(M^0.75)["abun-weighted"]*")"))+
-  scale_y_continuous(name = expression(log*"("*bar(M^0.75)["biomass-weighted"]*")"))+
-  theme(legend.position = 'none')
-
-```
 
 ## Theory of body size--abundance
 
@@ -1487,6 +1476,19 @@ dat %>%
         legend.position.inside = c(0.5,0.5),
         legend.justification.inside = c(1,1));n_m_extrapolate_plot 
 saveRDS(n_m_extrapolate_plot, here("doc/plots/nm_extrapolate_plot.rds"))
+```
+
+```{r NB met comparison}
+
+dat %>% 
+  ggplot()+
+  geom_point(aes(x = lmbar_n_met, lmbar_b_met, color = site_id), size = 1.3)+
+  scale_color_viridis(discrete = TRUE)+
+  geom_abline()+
+  scale_x_continuous(name = expression(log*"("*bar(M^0.75)["abun-weighted"]*")"))+
+  scale_y_continuous(name = expression(log*"("*bar(M^0.75)["biomass-weighted"]*")"))+
+  theme(legend.position = 'none')
+
 ```
 
 <!-- ```{r N-B body size, fig.cap= 'Figure S1. The relationship between different measures of community mean body size. a) uncorrected mean body size weighted by abundance and biomass, b) mean abundance-weighted body mass vs abundance-weighted body mass with a metabolic correction, and c) biomass-weighted vs biomass-weighted with metabolic correction.' } -->
