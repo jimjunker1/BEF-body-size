@@ -259,7 +259,7 @@ dat = sampleParams %>%
 
 dat_summ = dat %>% 
   summarise(across(c(n_tot, ln_tot, mbar_n, mbar_n_met, mbar_b, mbar_b_met, lmbar_n, lmbar_n_met, lmbar_b, lmbar_b_met, b_m2, lb_m2, m_max, ln_tot_s, lmbar_n_met_s,lmbar_b_met_s, lmbar_n_s, lmbar_b_s, log_gpp_s, log_om_s, mat_s, lambda_med, lower_lambda, upper_lambda, n_est, b_old, b_est, ln_est, lb_est, lmbar_n_est, lmbar_b_est, lmbar_n_est_met, lmbar_b_est_met, lat, m_sigma), mean),
-            hill_0 = unique(hill_0), Lhill_0 = unique(Lhill_0), .by ='site_id') %>% 
+            hill_0 = unique(hill_0), Lhill_0 = unique(Lhill_0), watershed_area = unique(watershed_area), .by ='site_id') %>% 
   mutate(across(c(ln_est, lmbar_n_est, lmbar_b_est, lmbar_n_est_met, lmbar_b_est_met), ~as.numeric(scale(.x, center =TRUE, scale = FALSE)), .names = "{.col}_s"))
 
 # remove the unneeded objects
@@ -726,10 +726,8 @@ m_sigma_s_cond = conditional_effects(m_sigma_s_lmm) %>% flatten %>% data.frame
 # b_m_lm_pred = predict(b_m_lm, newdata = dat %>% dplyr::select(site_id, lmbar_b_met))
 
 
-# m_sigma_s_pred = dat %>% 
-#   modelr::data_grid(site_id = site_id,
-#             Lhill_0 = Lhill_0) %>% 
-#   add_epred_draws(m_sigma_s_lmm, ndraws = 100, re_formula = NA)
+m_sigma_text_annotation = paste0('$\\beta =$', eval(round(m_sigma_s_lmm_fix[1],2)), " [", eval(round(m_sigma_s_lmm_fix[3],2)), " , ", eval(round(m_sigma_s_lmm_fix[4],2)), "]")
+m_sigma_text_annotation2 = paste0('$r^2=$',eval(round(bayes_R2(m_sigma_s_lmm)[1],2)))
 
 
 m_sigma_s_plot = 
@@ -748,7 +746,10 @@ dat %>%
   scale_y_continuous(name = "Mass variance ( \u03C3 "^2~""[m]~")",
                      limits = c(NA,NA))+
   scale_fill_viridis(discrete = TRUE)+
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(m_sigma_text_annotation), family = 'serif' )+
+  annotate('text', x = -Inf, y = Inf, vjust = 3, hjust = 0, parse = TRUE, label = TeX(m_sigma_text_annotation2), family = 'serif' )+
   theme(legend.position = 'none');m_sigma_s_plot
+saveRDS(m_sigma_s_plot, here('doc/plots/m_sigma_s_plot.rds'))
 
 ## look at relationship between lambda and m_sigma
 output =
@@ -779,6 +780,9 @@ lambda_m_sigma_lmm_int =fixef(lambda_m_sigma_lmm)[1,'Estimate']
 lambda_m_sigma_lmm_fix = fixef(lambda_m_sigma_lmm)[2,]
 lambda_m_sigma_cond = conditional_effects(lambda_m_sigma_lmm) %>% flatten %>% data.frame
 
+lambda_m_sigma_text_annotation = paste0('$\\beta =$', eval(round(lambda_m_sigma_lmm_fix[1],2)), " [", eval(round(lambda_m_sigma_lmm_fix[3],2)), " , ", eval(round(lambda_m_sigma_lmm_fix[4],2)), "]")
+lambda_m_sigma_text_annotation2 = paste0('$r^2=$',eval(round(bayes_R2(lambda_m_sigma_lmm)[1],2)))
+
 lambda_m_sigma_plot = 
 dat %>% 
   ggplot()+
@@ -790,8 +794,11 @@ dat %>%
                      limits = c(NA,NA))+
   scale_y_continuous(name = "Food web efficiency ( \u03BB )",
                      limits = c(-2.75, -1.2))+
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(lambda_m_sigma_text_annotation), family = 'serif' )+
+  annotate('text', x = -Inf, y = Inf, vjust = 3, hjust = 0, parse = TRUE, label = TeX(lambda_m_sigma_text_annotation2), family = 'serif' )+
   scale_fill_viridis(discrete = TRUE)+
   theme(legend.position = 'none');lambda_m_sigma_plot
+saveRDS(lambda_m_sigma_plot, here('doc/plots/lambda_m_sigma_plot.rds'))
 
 
 dat %>% ggplot()+geom_point(aes(x = Lhill_0, y = ln_est))
@@ -872,8 +879,10 @@ resid_s_draws = unlist(as_draws_df(resid_s_lambda, variable = 'b_Lhill_0')$b_Lhi
 perc_pos_hill = ecdf(resid_s_draws)
 1 - perc_pos_hill(0)
 
+performance::r2_bayes(resid_s_lambda)
+
 s_text_annotation = paste0("$\\beta =$",eval(round(resid_s_lmm_hill[1],2)), " [", eval(round(resid_s_lmm_hill[3],2)), " , ", eval(round(resid_s_lmm_hill[4],2)), "]")
-# s_text_annotation2 = paste0("$r^{2} =$", eval(round(bayes_R2(resid_s_lambda)[1],2)) )
+s_text_annotation2 = paste0("$r^{2} =$", eval(round(bayes_R2(resid_s_lambda)[1],2)) )
 
 S_breaks = log(c(25, 50, 75, 100, 125, 150))
 S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
@@ -884,7 +893,7 @@ resid_lables = c(format(exp(log(4:1))*-1,scientific = FALSE, digits = 2), 0, for
 resid_s_plot = 
 NM_nwt_resid  %>%
   ggplot()+
-  geom_line(data = b_resid_marg_hill, aes(x = Lhill_0, y = resid_theory), color = 'darkgrey')+
+  geom_line(data = b_resid_marg_hill, aes(x = Lhill_0, y = resid_theory), color = 'darkgrey', linetype = 'dotdash')+
   geom_ribbon(data = b_resid_marg_hill, aes(x = Lhill_0, ymin = conf.low, ymax = conf.high),fill = 'grey', alpha = 0.5)+
   geom_point(aes(x = Lhill_0, y = resid_theory, fill = site_id), color = 'darkgrey', shape =21, size = 1, alpha = 0.5)+
   geom_point(data = . %>% ungroup %>%  summarise(Lhill_0 = mean(Lhill_0, na.rm = TRUE),
@@ -1238,6 +1247,20 @@ dat %>%
 ## Environmental models
 
 ```{r environmental models}
+
+dat %>% 
+  ggplot()+
+  geom_point(aes(x = log10(watershed_area), y = lambda_med, fill = site_id), size = 1, shape = 21, alpha = 0.5)+
+  geom_point(dat = dat_summ, aes(x = log10(watershed_area), y = lambda_med, fill = site_id), size = 3, shape = 21)+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none')
+
+dat %>% 
+  ggplot()+
+  # geom_point(aes(x = log10(watershed_area), y = Lhill_0, fill = site_id), size = 1, shape = 21, alpha = 0.5)+
+  geom_point(dat = dat_summ, aes(x = log10(watershed_area), y = Lhill_0, fill = site_id), size = 3, shape = 21)+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none')
 
 # output =
 #   capture.output(

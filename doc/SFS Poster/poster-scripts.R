@@ -116,6 +116,27 @@ ggsave(plot = nm_plot,
        scaling = 2
 )
 
+m_sigma_s_plot = readRDS(here('doc/plots/m_sigma_s_plot.rds'))
+ggsave(plot = m_sigma_s_plot,
+       filename = 'm_sigma_s_plot.svg',
+       path = folder_path,
+       device = 'svg',
+       width = 8,
+       height = 8, units = 'in',
+       scaling = 2
+)
+
+lambda_m_sigma_plot = readRDS(here('doc/plots/lambda_m_sigma_plot.rds'))
+ggsave(plot = lambda_m_sigma_plot,
+       filename = 'lambda_m_sigma_plot.svg',
+       path = folder_path,
+       device = 'svg',
+       width = 8,
+       height = 8, units = 'in',
+       scaling = 2
+)
+
+
 s_lambda_plot = readRDS(here('doc/plots/s_lambda_plot.rds'))
 ggsave(plot = s_lambda_plot,
        filename = 's_lambda_plot.svg',
