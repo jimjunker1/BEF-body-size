@@ -112,6 +112,23 @@ H_summ = H_dat %>%
   mutate(across(contains('hill'), ~log(.x), .names = "L{.col}")) %>% 
   left_join(coords, by = 'site_id')
 
+## estimate the size variance within the community
+### size variance function
+m_sigma2 <- function(m, w = NULL){
+  if(is.null(w)) w <- rep(1, length(m))
+  logm <- log(m)
+  mu <- sum(w * logm)/sum(w)
+  sum(w * (logm - mu)^2)/sum(w)
+}
+
+# split the not culled data into samples
+sigma_dat = readRDS(here('data/dat_2022_notculled.rds')) %>% 
+  named_group_split(sample_id) %>% 
+  map(~m_sigma2(m = .$dw, w = .$no_m2)) %>% 
+  bind_rows(.id = 'sample_id') %>% 
+  pivot_longer(everything(),names_to = 'sample_id', values_to = 'm_sigma') %>% 
+  mutate(sample_id = as.integer(sample_id))
+
 # read in data and calc sample level summaries
 # dw_dat = readRDS(here("data/))
 # dw_dat = readRDS(here("data/dat_2022_notculled.rds")) %>% 
@@ -237,10 +254,11 @@ dat = sampleParams %>%
            lmbar_b_est_met = log(exp(lmbar_b_est)^0.75)) %>% 
   mutate(across(c(ln_est, lmbar_n_est, lmbar_b_est, lmbar_n_est_met, lmbar_b_est_met), ~as.numeric(scale(.x, center =TRUE, scale = FALSE)), .names = "{.col}_s")) %>% 
   ungroup %>% 
-  mutate(n_mean = mean(n_est), .by = 'site_id')
+  mutate(n_mean = mean(n_est), .by = 'site_id') %>% 
+  left_join(sigma_dat, by = 'sample_id')
 
 dat_summ = dat %>% 
-  summarise(across(c(n_tot, ln_tot, mbar_n, mbar_n_met, mbar_b, mbar_b_met, lmbar_n, lmbar_n_met, lmbar_b, lmbar_b_met, b_m2, lb_m2, m_max, ln_tot_s, lmbar_n_met_s,lmbar_b_met_s, lmbar_n_s, lmbar_b_s, log_gpp_s, log_om_s, mat_s, lambda_med, lower_lambda, upper_lambda, n_est, b_old, b_est, ln_est, lb_est, lmbar_n_est, lmbar_b_est, lmbar_n_est_met, lmbar_b_est_met, lat), mean),
+  summarise(across(c(n_tot, ln_tot, mbar_n, mbar_n_met, mbar_b, mbar_b_met, lmbar_n, lmbar_n_met, lmbar_b, lmbar_b_met, b_m2, lb_m2, m_max, ln_tot_s, lmbar_n_met_s,lmbar_b_met_s, lmbar_n_s, lmbar_b_s, log_gpp_s, log_om_s, mat_s, lambda_med, lower_lambda, upper_lambda, n_est, b_old, b_est, ln_est, lb_est, lmbar_n_est, lmbar_b_est, lmbar_n_est_met, lmbar_b_est_met, lat, m_sigma), mean),
             hill_0 = unique(hill_0), Lhill_0 = unique(Lhill_0), .by ='site_id') %>% 
   mutate(across(c(ln_est, lmbar_n_est, lmbar_b_est, lmbar_n_est_met, lmbar_b_est_met), ~as.numeric(scale(.x, center =TRUE, scale = FALSE)), .names = "{.col}_s"))
 
@@ -292,7 +310,7 @@ b_s_lmm_pred = predict(b_s_lmm, newdata = dat %>% dplyr::select(site_id, Lhill_0
 b_s_draws = unlist(as_draws_df(b_s_lmm, variable = 'b_Lhill_0')$b_Lhill_0)
 
 perc_pos_hill = ecdf(b_s_draws)
-# 1 - perc_pos_hill(0)
+1 - perc_pos_hill(0)
 # quantile(b_s_draws, c(0.025, 0.975))
 
 # create a prediction data set
@@ -445,6 +463,86 @@ b_m_pred_plot = b_m_pred %>%
         panel.grid.minor = element_blank());b_m_pred_plot
 saveRDS(b_m_pred_plot, here('doc/plots/b_m_pred_plot.rds'))
 
+
+# estimate the relationship with abundance weighted M
+output = 
+  capture.output(
+    brm(
+      bf(lb_est ~ lmbar_n_est + (1 + lmbar_n_est | site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 5000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/b_m_n"),
+      control = list(adapt_delta = 0.999),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+
+b_m_n_lmm = readRDS(here("data/models/b_m_n.rds"))
+b_m_n_draws = unlist(as_draws_df(b_m_n_lmm, variable = 'b_lmbar_n_est')$b_lmbar_n_est)
+# bayes_R2(b_m_n_lmm)[1]
+perc_pos_m = ecdf(b_m_n_draws)
+# 1 - perc_pos_m(0.001)
+
+b_m_n_lmm_int =fixef(b_m_n_lmm)[1,'Estimate']
+b_m_n_lmm_fix = fixef(b_m_n_lmm)[2,]
+b_m_n_cond = conditional_effects(b_m_n_lmm) %>% flatten %>% data.frame
+# b_m_lm_pred = predict(b_m_lm, newdata = dat %>% dplyr::select(site_id, lmbar_b_met))
+
+
+b_m_n_pred = dat %>% 
+  modelr::data_grid(site_id = site_id,
+            lmbar_n_est = lmbar_n_est) %>% 
+  add_epred_draws(b_m_n_lmm, ndraws = 100, re_formula = NA)
+
+# b_m_outliers_pred = dat %>% 
+#   modelr::data_grid(site_id = site_id,
+#             lmbar_b_met = lmbar_b_met) %>% 
+#   add_epred_draws(b_m_lmm_outliers, ndraws = 100, re_formula = NA)
+
+# set biomass 
+b_breaks = log(c(1e2, 1e3, 1e4, 1e5, 1e6))
+b_labels = c(100, 1000, format(c(1e4,1e5,1e6), scientific = TRUE, digits = 2))
+# M_breaks = seq.int(round(min(dat$lmbar_b_met, na.rm = TRUE)), round(max(dat$lmbar_b_met, na.rm = TRUE)), by = 2)
+# convert log e to log 10 for estimation of 
+M_breaks = log(c(0.1,1, 10,100))
+M_labels = exp(M_breaks)#format(exp(M_breaks), scientific = FALSE, digits = NULL, nsmall = 0)
+r2_lab = round(bayes_R2(b_m_n_lmm)[1],2)
+
+m_text_annotation = paste0('$\\beta =$', eval(round(b_m_n_lmm_fix[1],2)), " [", eval(round(b_m_n_lmm_fix[3],2)), " , ", eval(round(b_m_n_lmm_fix[4],2)), "]")
+m_text_annotation2 = paste0('$r^2=$',eval(round(bayes_R2(b_m_n_lmm)[1],2)))
+
+b_m_n_pred_plot = b_m_n_pred %>% 
+  ggplot()+
+  geom_ribbon(data = b_m_n_cond, aes(x = lmbar_n_est, ymin = lower__, ymax= upper__), fill = 'grey', alpha = 0.5)+
+  geom_path(data = b_m_n_cond, aes(x = lmbar_n_est, y = estimate__), color = 'darkgrey', linewidth = 1)+
+  #add outliers regression in 
+    # geom_ribbon(data = b_m_outliers_cond, aes(x = lmbar_b_met, ymin = lower__, ymax= upper__), fill = 'darkgreen', alpha = 0.5)+
+  # geom_path(data = b_m_outliers_cond, aes(x = lmbar_b_met, y = estimate__), color = 'darkgreen', linewidth = 1)+
+  # geom_path(aes(x = lmbar_b_met, y = .epred, group = .draw), color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dat, aes(x = lmbar_n_est, y = lb_est, fill = site_id), shape = 21, color = 'grey', alpha = 0.5, position = position_jitter(width = 0.02))+
+  geom_point(data = dat_summ, aes(x = lmbar_n_est, y = lb_est, fill = site_id), color = 'black', shape = 21, size = 3)+
+  scale_x_continuous(name = expression(bar(M)[" "]*"(mg "*ind.^-1*")"),
+                     breaks = M_breaks,
+                     labels = M_labels,
+                     limits = c(NA,NA))+
+  scale_y_continuous(name = expression("Biomass (mg "~m^-2*")"),
+                     limits = c(log(100),log(10^(6.5))),
+                     breaks = b_breaks,
+                     labels = b_labels,
+                     expand = c(0.01,0.01)
+                     )+
+  scale_fill_viridis(discrete = TRUE)+
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(m_text_annotation), family = 'serif')+
+  annotate('text', x = -Inf, y = Inf, vjust = 3, hjust = 0, parse = TRUE, label = TeX(m_text_annotation2), family = 'serif')+
+  theme(legend.position = 'none',
+        panel.grid.minor = element_blank());b_m_n_pred_plot
+saveRDS(b_m_n_pred_plot, here('doc/plots/b_m_n_pred_plot.rds'))
+
 ```
 
 Alternatively, allometric theory predicts community biomass should scale with mean community body size ($\overline M$). We estimated the biomass~$\overline M$ scaling relationship, $\beta$, which represents the relationship, $log(B) \propto log(\overline M)$, with $\overline M$ calculated as the mean community body size weighted by relative biomass in the community, $\overline M_{B-weighted}$. Community biomass had a strong, consistent positive scaling with $\overline M$, and this relationship was steeper than the 0.25 predicted by AT ($\beta$ = `r round(b_m_lmm_fix[1], 2)` [`r round(quantile(b_m_draws, c(0.025)),2)` -- `r round(quantile(b_m_draws, c(0.975)),2)`]; mean $\pm$ 95% CrI), with ~`r round(bayes_R2(b_m_lmm)[1]*100)`% of the variation in across stream community biomass explained by $\overline M$.
@@ -455,34 +553,34 @@ Alternatively, allometric theory predicts community biomass should scale with me
 
 output = 
   capture.output(
-    brm(bf(ln_est_s~lmbar_b_est_s + (1 + lmbar_b_est_s|site_id)),
+    brm(bf(ln_est_s~lmbar_n_est_s + (1 + lmbar_n_est_s|site_id)),
         data = dat,
         family = gaussian(link = 'identity'),
         iter = 2000,
         thin = 1,
         file_refit = 'on_change',
-        file = here("data/models/NM_bwt"),
+        file = here("data/models/NM_nwt"),
         control = list(adapt_delta = 0.99),
         chains = 4, cores = 4,
         seed = 1312
         )
     )
-NM_bwt = readRDS(here("data/models/NM_bwt.rds"))
+NM_nwt = readRDS(here("data/models/NM_nwt.rds"))
 # NM_met_nwt = readRDS(here('data/models/NM_nwt.rds'))
 # plot(conditional_effects(NM_met_bwt))
 
-NM_bwt_cond = conditional_effects(NM_bwt) %>% flatten %>% data.frame 
+NM_nwt_cond = conditional_effects(NM_nwt) %>% flatten %>% data.frame 
 
-NM_bwt_int =fixef(NM_bwt)[1,'Estimate']
-NM_bwt_slope = fixef(NM_bwt)[2,]
+NM_nwt_int =fixef(NM_nwt)[1,'Estimate']
+NM_nwt_slope = fixef(NM_nwt)[2,]
 
 # data grid for mean prediction
-NM_bwt_pred = dat %>% 
-  modelr::data_grid(lmbar_b_est_s = lmbar_b_est_s) %>% 
-  mutate(pred_s = NM_bwt_int + lmbar_b_est_s *-1) %>% 
+NM_nwt_pred = dat %>% 
+  modelr::data_grid(lmbar_n_est_s = lmbar_n_est_s) %>% 
+  mutate(pred_s = NM_nwt_int + lmbar_n_est_s *-1) %>% 
   # if we want estimates around predictions we can call this later
-  add_epred_draws(NM_bwt, ndraws = 100, re_formula = NA) %>%
-  left_join(dat %>% dplyr::select(site_id, lmbar_b_est_s, ln_est_s, lambda_med, Lhill_0), by = 'lmbar_b_est_s') %>%
+  add_epred_draws(NM_nwt, ndraws = 100, re_formula = NA) %>%
+  left_join(dat %>% dplyr::select(site_id, lmbar_n_est_s, ln_est_s, lambda_med, Lhill_0), by = 'lmbar_n_est_s') %>%
   # mutate(lmbar_n_est_met = lmbar_n_est_met * sd(dat$lmbar_n_est_met, na.rm = TRUE) + mean(dat$lmbar_n_est_met, na.rm = TRUE),
          # pred = pred_s * sd(dat$ln_est, na.rm = TRUE) + mean(dat$ln_est,na.rm = TRUE),
          # ln_est = ln_est * sd(dat$ln_est, na.rm = TRUE) + mean(dat$ln_est, na.rm = TRUE)) %>%
@@ -491,10 +589,10 @@ NM_bwt_pred = dat %>%
 
 ## values for rescaling
 ln_est_center = mean(dat_summ$ln_est)
-lmbar_b_est_center = mean(dat_summ$lmbar_b_est)
+lmbar_n_est_center = mean(dat_summ$lmbar_n_est)
 
 
-M_breaks = log(c(0.001,0.01,0.1, 1,10,100,1000,1e4))-lmbar_b_est_center
+M_breaks = log(c(0.001,0.01,0.1, 1,10,100,1000,1e4))-lmbar_n_est_center
 M_labels = c(0.001,0.01,0.1, 1,10,100,1000,1e4)
 
 N_breaks = log(c(1e3, 1e4, 1e5, 1e6, 1e7)) - ln_est_center
@@ -506,12 +604,12 @@ NM_text_annotation = paste("italic('N ~')","~italic('M')^~-1")
 nm_theory_plot=
 dat %>% 
   ggplot()+
-  geom_line(data = NM_bwt_pred, aes(x = lmbar_b_est_s, y = pred_s), color = 'black', linewidth = 1)+
-  geom_point(aes(x = lmbar_b_est_s, y = ln_est_s, fill = site_id),shape = 21, color = 'darkgrey', alpha = 0.5)+
-  geom_point(data = dat_summ, aes(x = lmbar_b_est_s, y = ln_est_s, fill = site_id), color = 'black', shape = 21, size = 3)+
-  geom_line(data = NM_bwt_cond, aes(x = lmbar_b_est_s, y = estimate__), color = 'darkgrey')+
-  geom_ribbon(data = NM_bwt_cond, aes(x = lmbar_b_est_s, ymin = lower__, ymax = upper__), alpha = 0.5, fill = 'grey')+
-  scale_x_continuous(name = expression(~bar(M)["bio-weighted"]~"(mg "*individual^-1*")"),
+  geom_line(data = NM_nwt_pred, aes(x = lmbar_n_est_s, y = pred_s), color = 'black', linewidth = 1)+
+  geom_point(aes(x = lmbar_n_est_s, y = ln_est_s, fill = site_id),shape = 21, color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dat_summ, aes(x = lmbar_n_est_s, y = ln_est_s, fill = site_id), color = 'black', shape = 21, size = 3)+
+  geom_line(data = NM_nwt_cond, aes(x = lmbar_n_est_s, y = estimate__), color = 'darkgrey')+
+  geom_ribbon(data = NM_nwt_cond, aes(x = lmbar_n_est_s, ymin = lower__, ymax = upper__), alpha = 0.5, fill = 'grey')+
+  scale_x_continuous(name = expression(~bar(M)[""]~"(mg "*individual^-1*")"),
                      breaks = M_breaks,
                      labels = M_labels,
                      limits = c(NA,NA),
@@ -522,28 +620,202 @@ dat %>%
                      expand = c(0.01,0.01))+
   coord_cartesian(ylim = c(NA, (log(10^(6.5))-ln_est_center)))+
   scale_fill_viridis(discrete = TRUE)+
-  annotate('text', x= -Inf, y = Inf, vjust = 1, hjust = -0.5, parse = TRUE, label = NM_text_annotation, family = 'serif' )+
+  # annotate('text', x= -Inf, y = Inf, vjust = 1, hjust = -0.5, parse = TRUE, label = NM_text_annotation, family = 'serif' )+
   theme(legend.position = 'none');nm_theory_plot
 saveRDS(nm_theory_plot, here('doc/plots/n_m_theory_plot.rds'))
 
+nm_plot=
+dat %>% 
+  ggplot()+
+  geom_line(data = NM_nwt_pred, aes(x = lmbar_n_est_s, y = pred_s), color = 'black', linewidth = 1)+
+  geom_point(aes(x = lmbar_n_est_s, y = ln_est_s, fill = site_id),shape = 21, color = 'darkgrey', alpha = 0.5)+
+  geom_point(data = dat_summ, aes(x = lmbar_n_est_s, y = ln_est_s, fill = site_id), color = 'black', shape = 21, size = 3)+
+  # geom_line(data = NM_bwt_cond, aes(x = lmbar_b_est_s, y = estimate__), color = 'darkgrey')+
+  # geom_ribbon(data = NM_bwt_cond, aes(x = lmbar_b_est_s, ymin = lower__, ymax = upper__), alpha = 0.5, fill = 'grey')+
+  scale_x_continuous(name = expression(~bar(M)[""]~"(mg "*individual^-1*")"),
+                     breaks = M_breaks,
+                     labels = M_labels,
+                     limits = c(NA,NA),
+                     expand = c(0.01,0.01))+
+  scale_y_continuous(name = expression("Abundance (individuals   "~m^-2~")"),
+                     breaks = N_breaks,
+                     labels = N_labels,
+                     expand = c(0.01,0.01))+
+  coord_cartesian(ylim = c(NA, (log(10^(6.5))-ln_est_center)))+
+  scale_fill_viridis(discrete = TRUE)+
+  # annotate('text', x= -Inf, y = Inf, vjust = 1, hjust = -0.5, parse = TRUE, label = NM_text_annotation, family = 'serif' )+
+  theme(legend.position = 'none');nm_plot
+saveRDS(nm_plot, here('doc/plots/nm_plot.rds'))
 
 ```
 
 As suggested by the steeper $B \propto \overline M$ scaling, the scaling of community abundance ($N$) with $\overline M$ was shallower than the the -1 predicted by theory. This predicted relationship $N \sim \overline M^{-1}$ represents the line of constant yield, or the line of constant biomass for communities of different $\overline M$. The estimated $N \propto \overline M$ relationship was consistently negative, with a mean estimated scaling slope of `r round(NM_bwt_slope[1],2)` [`r round(NM_bwt_slope[3],2)` -- `r round(NM_bwt_slope[4],2)` 95% CrI]. This relationship agrees with the patterns in $B \propto \overline M$ that stream communities with larger $\overline M$ have more individuals and support more biomass than communities with smaller $\overline M$, even after we account for $\overline M$. This gives us a framework to explore the differences in how communities "overyield" or maintain higher biomass than expected at a given body size. To do this, we can calculate the deviations from AT predictions, which reflect the under- and over-yielding of communities away from a constant biomass yield. 
 
+## Richness-Lambda relationships
+
+```{r richness prediction}
+
+output =
+  capture.output(
+    brm(
+      bf(lambda_med ~ Lhill_0 + (1 |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 2000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/lambda_s"),
+      # control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+
+labmda_s_lmm = readRDS(here("data/models/lambda_s.rds"))
+# bayes_R2(b_s_full_lmm)[1]
+
+S_breaks = log(c(25, 50, 75, 100, 125, 150))
+S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
+
+s_lambda_plot = 
+  dat %>% 
+  ggplot()+
+  geom_smooth(data = dat_summ, aes(x = Lhill_0, y = lambda_med), method = 'lm', se = FALSE, color = 'darkgrey', linetype = 'dotdash', linewidth = 2)+
+  geom_point(aes(x = Lhill_0, y = lambda_med, fill = site_id), shape = 21, size = 1, alpha = 0.5)+
+  geom_point(data = dat_summ, aes(x = Lhill_0, y = lambda_med, fill = site_id), shape = 21, size = 3)+
+   scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
+                     breaks = S_breaks,
+                     labels = S_labels,
+                     limits = c(log(25),log(150)),
+                     expand = c(0.01,0.01)
+                     )+
+  scale_y_continuous(name = "Food web efficiency ( \u03BB )",
+                     limits = c(-2.75, -1.2))+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none');s_lambda_plot
+saveRDS(s_lambda_plot, here('doc/plots/s_lambda_plot.rds'))
+
+output =
+  capture.output(
+    brm(
+      bf(m_sigma ~ Lhill_0 + (1 |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 2000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/m_sigma_s"),
+      # control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+
+m_sigma_s_lmm = readRDS(here("data/models/m_sigma_s.rds"))
+
+m_sigma_s_draws = unlist(as_draws_df(m_sigma_s_lmm, variable = 'b_Lhill_0')$b_Lhill_0)
+bayes_R2(m_sigma_s_lmm)[1]
+perc_pos_hill = ecdf(m_sigma_s_draws)
+1 - perc_pos_hill(0.001)
+
+m_sigma_s_lmm_int =fixef(m_sigma_s_lmm)[1,'Estimate']
+m_sigma_s_lmm_fix = fixef(m_sigma_s_lmm)[2,]
+m_sigma_s_cond = conditional_effects(m_sigma_s_lmm) %>% flatten %>% data.frame
+# b_m_lm_pred = predict(b_m_lm, newdata = dat %>% dplyr::select(site_id, lmbar_b_met))
+
+
+# m_sigma_s_pred = dat %>% 
+#   modelr::data_grid(site_id = site_id,
+#             Lhill_0 = Lhill_0) %>% 
+#   add_epred_draws(m_sigma_s_lmm, ndraws = 100, re_formula = NA)
+
+
+m_sigma_s_plot = 
+dat %>% 
+  ggplot()+
+    geom_ribbon(data = m_sigma_s_cond, aes(x = Lhill_0, ymin = lower__, ymax = upper__),alpha = 0.5, fill = 'grey')+
+  geom_line(data = m_sigma_s_cond, aes(x = Lhill_0, y = estimate__), color = 'darkgrey')+
+  geom_point(aes(x = Lhill_0, y = m_sigma, fill = site_id), shape = 21, size = 1, alpha = 0.5)+
+  geom_point(data = dat_summ, aes(x = Lhill_0, y = m_sigma, fill = site_id), shape = 21, size = 3)+
+  scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
+                     breaks = S_breaks,
+                     labels = S_labels,
+                     limits = c(log(25),log(150)),
+                     expand = c(0.01,0.01)
+                     )+
+  scale_y_continuous(name = "Mass variance ( \u03C3 "^2~""[m]~")",
+                     limits = c(NA,NA))+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none');m_sigma_s_plot
+
+## look at relationship between lambda and m_sigma
+output =
+  capture.output(
+    brm(
+      bf(lambda_med ~ m_sigma + (1 |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 2000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/lambda_m_sigma"),
+      # control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+
+lambda_m_sigma_lmm = readRDS(here("data/models/lambda_m_sigma.rds"))
+
+lambda_m_sigma_draws = unlist(as_draws_df(lambda_m_sigma_lmm, variable = 'b_m_sigma')$b_m_sigma)
+bayes_R2(lambda_m_sigma_lmm)[1]
+perc_pos_m_sigma = ecdf(lambda_m_sigma_draws)
+1 - perc_pos_m_sigma(0.001)
+
+lambda_m_sigma_lmm_int =fixef(lambda_m_sigma_lmm)[1,'Estimate']
+lambda_m_sigma_lmm_fix = fixef(lambda_m_sigma_lmm)[2,]
+lambda_m_sigma_cond = conditional_effects(lambda_m_sigma_lmm) %>% flatten %>% data.frame
+
+lambda_m_sigma_plot = 
+dat %>% 
+  ggplot()+
+  geom_ribbon(data = lambda_m_sigma_cond, aes(x = m_sigma, ymin = lower__, ymax = upper__), fill = 'grey', alpha = 0.5)+
+  geom_line(data = lambda_m_sigma_cond, aes(x = m_sigma, y = estimate__), color = 'darkgrey')+
+  geom_point(aes(x = m_sigma, y = lambda_med, fill = site_id), shape = 21, size = 1, alpha = 0.5)+
+  geom_point(data = dat_summ, aes(x = m_sigma, y = lambda_med, fill = site_id), shape = 21, size = 3)+
+  scale_x_continuous(name = "Mass variance ( \u03C3 "^2~""[m]~")",
+                     limits = c(NA,NA))+
+  scale_y_continuous(name = "Food web efficiency ( \u03BB )",
+                     limits = c(-2.75, -1.2))+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none');lambda_m_sigma_plot
+
+
+dat %>% ggplot()+geom_point(aes(x = Lhill_0, y = ln_est))
+```
+
+
 ## Residual models
 
 ```{r residual models}
 ## calculate the bayesian linear regression
-NM_bwt_resid = dat %>% 
-  mutate(pred_s = predict(NM_bwt)[,1]) %>% 
-  mutate(pred_theory = NM_bwt_int + lmbar_b_est_s *-1,
+# NM_bwt_resid = dat %>% 
+#   mutate(pred_s = predict(NM_bwt)[,1]) %>% 
+#   mutate(pred_theory = NM_bwt_int + lmbar_b_est_s *-1,
+#          resid_theory = pred_s - pred_theory)
+
+NM_nwt_resid = dat %>%
+  mutate(pred_s = predict(NM_nwt)[,1]) %>%
+  mutate(pred_theory = NM_nwt_int + lmbar_n_est_s *-1,
          resid_theory = pred_s - pred_theory)
 output =
   capture.output(
     brm(
       bf(resid_theory ~ Lhill_0 + lambda_med + (1 + lambda_med | site_id)),
-      data = NM_bwt_resid,
+      data = NM_nwt_resid,
       family = gaussian(link = 'identity'),
       iter = 5000,
       thin = 1,
@@ -558,6 +830,10 @@ output =
 # load the full model
 resid_s_lambda = readRDS(here('data/models/resid_s_lambda.rds'))
 
+# perc_pos_hill = ecdf(b_s_draws)
+# 1 - perc_pos_hill(0)
+# quantile(b_s_draws, c(0.025, 0.975))
+
 b_resid_marg_lambda = ggeffects::predict_response(resid_s_lambda, terms = c('lambda_med'), margin = 'marginalmeans', type = 'fixed') %>% 
   rename(lambda_med = 'x', resid_theory = 'predicted')
 # plot(b_resid_marg_lambda)
@@ -565,31 +841,100 @@ b_resid_marg_hill = ggeffects::predict_response(resid_s_lambda, terms = c('Lhill
   rename(Lhill_0 = 'x', resid_theory = 'predicted')
 # plot(b_resid_marg_hill)
 
+# resid_s_lambda_summ = 
+  # NM_nwt_resid %>%
+  # ungroup %>%
+  # summarise(Lhill_0 = mean(Lhill_0, na.rm = TRUE),
+  #           resid_theory = mean(resid_theory, na.rm = TRUE),
+  #           lambda_med = mean(lambda_med, na.rm = TRUE),
+  #           .by = 'site_id') %>% 
+  # brm(
+  #     bf(resid_theory ~ Lhill_0 * lambda_med ),
+  #     data = .,
+  #     family = gaussian(link = 'identity'),
+  #     iter = 5000,
+  #     thin = 1,
+  #     file_refit = 'always',
+  #     # file = here("data/models/resid_s_lambda_summ"),
+  #     control = list(adapt_delta = 0.99),
+  #     chains = 4, cores = 4,
+  #     seed = 1312,
+  #     save_pars = save_pars(all = TRUE)
+  #     )
+  
 
 ### metabolic mass models
-NM_bwt_resid  %>%
+resid_s_lmm_int =fixef(resid_s_lambda)[1,'Estimate']
+resid_s_lmm_hill = fixef(resid_s_lambda)[2,]
+resid_s_lmm_pred = predict(resid_s_lambda, newdata = dat %>% dplyr::select(site_id, Lhill_0, lambda_med))
+resid_s_draws = unlist(as_draws_df(resid_s_lambda, variable = 'b_Lhill_0')$b_Lhill_0)
+
+perc_pos_hill = ecdf(resid_s_draws)
+1 - perc_pos_hill(0)
+
+s_text_annotation = paste0("$\\beta =$",eval(round(resid_s_lmm_hill[1],2)), " [", eval(round(resid_s_lmm_hill[3],2)), " , ", eval(round(resid_s_lmm_hill[4],2)), "]")
+# s_text_annotation2 = paste0("$r^{2} =$", eval(round(bayes_R2(resid_s_lambda)[1],2)) )
+
+S_breaks = log(c(25, 50, 75, 100, 125, 150))
+S_labels = format(exp(S_breaks), scientific = FALSE, digits = 2)
+
+resid_breaks = c(-log(4), -log(3), -log(2), -log(1), 0, log(1), log(2), log(3), log(4))
+resid_lables = c(format(exp(log(4:1))*-1,scientific = FALSE, digits = 2), 0, format(exp(log(1:4)),scientific = FALSE, digits = 2))
+
+resid_s_plot = 
+NM_nwt_resid  %>%
   ggplot()+
   geom_line(data = b_resid_marg_hill, aes(x = Lhill_0, y = resid_theory), color = 'darkgrey')+
   geom_ribbon(data = b_resid_marg_hill, aes(x = Lhill_0, ymin = conf.low, ymax = conf.high),fill = 'grey', alpha = 0.5)+
-  geom_point(aes(x = Lhill_0, y = resid_theory, fill = site_id), color = 'darkgrey', shape =21, alpha = 0.5)+
+  geom_point(aes(x = Lhill_0, y = resid_theory, fill = site_id), color = 'darkgrey', shape =21, size = 1, alpha = 0.5)+
   geom_point(data = . %>% ungroup %>%  summarise(Lhill_0 = mean(Lhill_0, na.rm = TRUE),
                                     resid_theory = mean(resid_theory, na.rm = TRUE),.by = 'site_id'),
              aes(x = Lhill_0, resid_theory, fill = site_id), color = 'black', shape = 21, size = 3)+
+  scale_x_continuous(name = expression("Species richness ("*Hill["q=0"]*")"),
+                     breaks = S_breaks,
+                     labels = S_labels,
+                     limits = c(log(25),log(150)),
+                     expand = c(0.01,0.01)
+                     )+
+  scale_y_continuous(name = expression("Residuals ( " ~italic(N)~"~"~italic(M)[theory]~")"),
+                     expand = c(0.01,0.01),
+                     limits = c(-4, 4),
+                     # breaks = resid_breaks,
+                     # labels = resid_lables
+                     )+
+  annotate('text', x = -Inf, y = Inf, vjust = 2, hjust = 0, parse = TRUE, label = TeX(s_text_annotation), family = 'serif' )+
   scale_fill_viridis(discrete = TRUE)+
-  theme(legend.position = 'none')
+  theme(legend.position = 'none');resid_s_plot
+saveRDS(resid_s_plot, here('doc/plots/resid_s_plot.rds'))
 # 
-NM_bwt_resid %>%
+resid_lambda_plot = 
+NM_nwt_resid %>%
   ggplot()+
   geom_line(data = b_resid_marg_lambda, aes(x = lambda_med, y = resid_theory), color = 'darkgrey')+
   geom_ribbon(data = b_resid_marg_lambda, aes(x = lambda_med, ymin = conf.low, ymax = conf.high),fill = 'grey', alpha = 0.5)+
-  geom_point(aes(x = lambda_med, y = resid_theory, fill = site_id), color = 'black', shape = 21, alpha = 0.5)+
-  geom_point(data = NM_bwt_pred %>% ungroup %>% summarise(labmda_med = mean(lambda_med, na.rm = TRUE),
+  geom_point(aes(x = lambda_med, y = resid_theory, fill = site_id), color = 'black', shape = 21, alpha = 0.5, size = 1)+
+  geom_point(data = NM_nwt_pred %>% ungroup %>% summarise(labmda_med = mean(lambda_med, na.rm = TRUE),
                                     resid_theory = mean(resid_theory, na.rm = TRUE),
                                     lambda_med = mean(lambda_med),.by = 'site_id'),
              aes(x = lambda_med, resid_theory, fill = site_id), color = 'black', shape = 21, size = 3)+
+  scale_y_continuous(name = expression("Residuals ( " ~italic(N)~"~"~italic(M)[theory]~")"),
+                     limits = c(-5, 5), 
+                     breaks = c(-4, -2, 0, 2, 4),
+                     labels = c(-4, -2, 0, 2, 4))+
+  scale_x_continuous(name = "Food web efficiency ( \u03BB )",
+                     limits = c(-3, -1))+
+  coord_cartesian(ylim = c(-5,5))+
   scale_fill_viridis(discrete = TRUE)+
-  theme(legend.position = 'none')
-# 
+  theme(legend.position = 'none');resid_lambda_plot
+saveRDS(resid_lambda_plot, here('doc/plots/resid_lambda_plot.rds'))
+
+# Resid environment
+
+
+
+
+
+
 # 
 # output = capture.output(
 #   brm(
@@ -668,9 +1013,39 @@ NM_bwt_resid %>%
 
 ```
 
-## Richness predictions
+## Richness-Lambda relationships
 
 ```{r richness prediction}
+
+output =
+  capture.output(
+    brm(
+      bf(lambda_med ~ Lhill_0 + (1 |site_id)),
+      data = dat,
+      family = gaussian(link = 'identity'),
+      iter = 2000,
+      thin = 1,
+      file_refit = 'on_change',
+      file = here("data/models/lambda_s"),
+      # control = list(adapt_delta = 0.99),
+      chains = 4,
+      cores = 4,
+      seed = 1312
+      )
+    )
+# labmda_s_lmm = readRDS(here("data/models/lambda_s"))
+# bayes_R2(b_s_full_lmm)[1]
+
+dat %>% 
+  ggplot()+
+  geom_smooth(data = dat_summ, aes(x = Lhill_0, y = lambda_med), method = 'lm', se = FALSE, color = 'darkgrey', linetype = 'dashed', linewidth = 2)+
+  geom_point(aes(x = Lhill_0, y = lambda_med, fill = site_id), shape = 21, size = 1, alpha = 0.5)+
+  geom_point(data = dat_summ, aes(x = Lhill_0, y = lambda_med, fill = site_id), shape = 21, size = 3)+
+  scale_fill_viridis(discrete = TRUE)+
+  theme(legend.position = 'none')
+
+
+
 # output = 
 #   capture.output(
 #     brm(
@@ -754,8 +1129,6 @@ NM_bwt_resid %>%
 #   scale_fill_viridis(discrete = TRUE)+
 #   theme(legend.position = 'none')
 ```
-
-
 
 ## Richness extrapolation
 
