@@ -121,6 +121,13 @@ m_sigma2 <- function(m, w = NULL){
   sum(w * (logm - mu)^2)/sum(w)
 }
 
+a_sigma2 <- function(a, w = NULL){
+  if(is.null(w)) w <- rep(1, length(a))
+  loga <- log(a)
+  mu <- sum(w * loga)/sum(w)
+  sum(w * (loga - mu)^2)/sum(w)
+}
+
 # split the not culled data into samples
 sigma_dat = readRDS(here('data/dat_2022_notculled.rds')) %>% 
   named_group_split(sample_id) %>% 

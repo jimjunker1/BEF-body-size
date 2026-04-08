@@ -196,3 +196,31 @@ compute_size_spectra <- function(posterior, M_range = NULL, n_points = 100) {
   
   return(df)
 }
+
+#' @title intensity_at_m0
+#' @description
+#' This function estimates the 'intensity' or abundance at a reference mass
+#' given a set lambda, x_min, and x_max. Useful for comparing across communities.
+#' 
+#'
+#'
+intensity_at_m0 <- function(m, x_min, x_max, lambda, m0, w = NULL) {
+  if (lambda == -1) stop("lambda = -1 not supported")
+  if (x_min <= 0 || x_max <= x_min) stop("Invalid bounds")
+  if (m0 < x_min || m0 > x_max) warning("m0 outside truncation range")
+  
+  # total (possibly weighted) abundance
+  if (is.null(w)) {
+    N <- length(m)
+  } else {
+    if (length(w) != length(m)) stop("w must match length of m")
+    N <- sum(w)
+  }
+  
+  # scaling constant
+  c <- N * (lambda + 1) / (x_max^(lambda + 1) - x_min^(lambda + 1))
+  
+  # intensity at reference mass
+  n_m0 <- c * m0^lambda
+  return(n_m0)
+}

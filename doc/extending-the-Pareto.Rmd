@@ -3,6 +3,14 @@ title: "extending-the-Pareto"
 output: html_document
 ---
 
+```{r internal functions, echo = FALSE, message = FALSE, warning=FALSE}
+source(here::here("R/helpers.R"))
+
+#set default plotting
+old.par = par(no.readonly = TRUE)
+
+```
+
 Background
 -----
 
@@ -12,7 +20,7 @@ $$f(m) = \frac{(\lambda + 1)m^{\lambda}}{m_{max}^{\lambda + 1} - m_{min}^{\lambd
 
 2. We observed $n$ individuals sampled in the interval [$m_{min}$,$m_{max}$]. 
 
-3. We want to estimate the new total expected abundance, $N_{new}$, in the extended interval [$m_{min2}$,$m_{max}$], where $m_{min2} \leq m_{min}$
+3. We want to estimate the new total expected abundance, $N_{new}$, in the extended interval [$m_{min2}$,$m_{max}$], where $m_{min2} < m_{min}$
 
 Deriving $N_{new}$ using PDF normalization
 -----
@@ -20,7 +28,47 @@ Deriving $N_{new}$ using PDF normalization
 1. Define the total count in [$m_{min}$,$m_{max}$] as the integral of a density count function, $N(m) = cm^{\lambda}$:
 
 $$ n = \int_{m_{min}}^{m_{max}} cm^{\lambda} dm$$
-where, $c$ is the density normalizer.
+where, $c$ is the density normalizer. The density normalizer simply converts the probability density function into a count density function as:
+
+$$ c = n \frac{(\lambda + 1)}{m_{max}^{\lambda + 1} - m_{min}^{\lambda +1}}$$
+
+as such, $c$ is directly proportional to $n$. Therefore, if we have adequately sampled the community from which we are estimating $\lambda$ and have well defined bounds on the mass range, $[m_{min},m_{max}]$, $c$ acts as a location parameter to scale community abundance or biomass across samples. These two community properties scale with $c$ linearly as:
+
+Abundance
+
+$$\frac{dN}{dc} = \frac{x_{max}^{\lambda+1} - x_{min}^{\lambda + 1}}{\lambda + 1}$$
+Biomass
+
+$$\frac{dB}{dc} = \frac{x_{max}^{\lambda+2} - x_{min}^{\lambda + 2}}{\lambda + 2}$$
+```{r check-c-scaling, echo = FALSE, fig.cap="Figure X. The relationship between the normalization constant 'c' and A) total community abundance or B) total community biomass'. These properties scale linearly for a given lambda, minimum mass, and maximum mass. The example shown has a fixed lambda = -1.5, minimum mass = 0.006 mg, and maximum mass = 12,000 mg."}
+
+nVec = seq(10, 1e5, length.out = 50)
+
+lambda = -1.5
+
+m_min = 0.006
+
+m_max = 12000
+
+cVec = nVec * (lambda + 1)/(m_max^(lambda + 1) - m_min^(lambda + 1))
+
+bVec = cVec *(m_max^(lambda + 2) - m_min^(lambda + 2)) / (lambda + 2)
+
+par(mfcol = c(1,2), mar = c(2.5,2.5,1,1))
+layout(matrix(c(1,2,1,3), ncol = 2), heights = c(1,5))#;layout.show()
+plot.new()
+text(0.5,0.5,bquote('\u03BB = -1.5, m'[min]*' = 0.006, m'[max]*' = 12000'), cex =2)
+plot(x = log10(cVec), y = log10(nVec), main = 'log10(Abundance (n))~log10(c)')
+lines(x = log10(cVec), y = log10(nVec))
+legend('topleft', legend = 'A', bty = 'n')
+plot(x = log10(cVec), y = log10(bVec), main = 'log10(Biomass)~log10(c)')
+lines(x = log10(cVec), y = log10(bVec))
+legend('topleft', legend = 'B', bty = 'n')
+```
+
+As an aside, if we want to compare communities and find a replacement of the 'height' parameter (often just the intercept of the log-log relationship between log(N) ~ log(m)), $c$ isn't a great candidate because it is dependent on $\lambda$, $m_{min}$, and $m_{max}$. Therefore a it is probably best to suggest that a reference mass, $m_0$, is used (e.g., $m_0 = 1 mg$). This is equally as arbitrary as the intercept (in this example they are the same), but at least it is explicit and in theory you could convert across different mass measurements across studies (e.g., studies with mass in grams vs milligrams) using these relationships.
+
+Now back to adjusting our abundance to a new $m_{min}$ for undersampling. The next step is to, 
 
 2. Evaluate the integral:
 
@@ -89,6 +137,58 @@ such that our total sample, i.e., $N_{cutoff}$, integrated over [$m_{min}$,$m_{m
 $$N_{cutoff} = \int_{m_{min}}^{m_{max}} c m^{\lambda} dm$$
 
 <\details>
+
+Connecting the ISD and CCSR
+----
+
+Now, I would like to extend this framework to think more intently about the connections between the ISD and the CCSR. We intuit that these relationships should be related. It is clear they are related because the CCSR is essentially an aggregate of the ISD, at least in part. To see this connection more clearly, we can break down the CCSR into its two respective components, mean body size, $\overline {M}$ and total abundance $N$. The theoretical mean body size can be estimated from the Pareto function based on a given $\lambda$, $m_{min}$, and $m_{max}$ as:
+
+
+\begin{aligned}
+
+\frac{(\lambda + 1) \cdot (m_{max}^{\lambda + 2} - m_{min}^{\lambda + 2})}{(\lambda + 2) \cdot (m_{max}^{\lambda + 1} - m_{min}^{\lambda +1})}, \lambda \neq [-1,-2] \\\
+
+\frac{(m_{max} - m_{min})}{log(m_{max}/m_{min})}, \lambda = -1 \\\
+
+\frac{(m_{min} \cdot m_{max})}{(m_{min} - m_{max})} \cdot log(m_{max} / m_{min}), \lambda = -2
+
+\end{aligned}
+
+So if we fix the mass range, $[m_{min}, m_{max}]$, we can how $\overline M$ scales with $\lambda$, non-linearly depending on the mass ranges.
+
+```{r mbar-lambda-scaling, echo = FALSE}
+
+lambda = seq(-2.5, -0.5, length.out = 20)
+
+m_bar1 = vapply(lambda, FUN = pareto_expectation, FUN.VALUE = 0.5, xmin = 0.001, xmax = 10000)
+
+m_bar2 = vapply(lambda, FUN = pareto_expectation, FUN.VALUE = 0.5, xmin = 10, xmax = 10000)
+
+m_bar3= vapply(lambda, FUN = pareto_expectation, FUN.VALUE = 0.5, xmin = 100, xmax = 10000)
+par(old.par)
+par(mfcol = c(1,2))
+plot(x = lambda, y = m_bar1, type = 'l', ylab = 'Mean body size', main = 'Increasing m_min')
+lines(x = lambda, y = m_bar2, col = 'red')
+lines(x = lambda, y = m_bar3, col = 'blue')
+
+m_bar1 = vapply(lambda, FUN = pareto_expectation, FUN.VALUE = 0.5, xmin = 0.001, xmax = 100)
+
+m_bar2 = vapply(lambda, FUN = pareto_expectation, FUN.VALUE = 0.5, xmin = 0.001, xmax = 1000)
+
+m_bar3= vapply(lambda, FUN = pareto_expectation, FUN.VALUE = 0.5, xmin = 0.001, xmax = 10000)
+plot(x = lambda, y = m_bar1, type = 'l',ylab = 'Mean body size', main = 'Increasing m_max')
+lines(x = lambda, y = m_bar2, col = 'red')
+lines(x = lambda, y = m_bar3, col = 'blue')
+
+```
+
+Total abundance is not really related to $\lambda$, $m_{min}$, or $m_{max}$, *per se*. Rather, as we outlined above, the connections between total abundance and $\lambda$, $m_{min}$, and $m_{max}$ are mediated through the $c$ normalization variable. As such, this is really the key linkage to the CCSR. We can directly relate where a community falls along the x-axis in the CCSR to $\lambda$, $m_{min}$, and $m_{max}$, but those are the only connections. Total abundance is independent of $\lambda$, $m_{min}$, and $m_{max}$. Now the relationship between total abundance and biomass is intimately tied to $\lambda$, $m_{min}$, and $m_{max}$ as:
+
+$$B = n \frac{(\lambda + 1)}{m_{max}^{\lambda + 1} - m_{min}^{\lambda +1}} \cdot \frac{m_{max}^{\lambda + 2} - m_{min}^{\lambda +2}}{\lambda + 2}$$
+and as we expect, the rest of that equation besides $n$ is the expected mean body size from the Pareto distribution. 
+
+
+## Appendix
 
 We can use simlated data to confirm this approach 
 
