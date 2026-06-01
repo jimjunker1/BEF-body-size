@@ -1,0 +1,130 @@
+---
+title: "sampling-bias"
+output: html_document
+---
+
+
+```{r internal functions, echo = FALSE, message = FALSE, warning=FALSE}
+here::i_am('doc/sampling-bias.Rmd')
+source(here::here("R/helpers.R"))
+
+#set default plotting
+old.par = par(no.readonly = TRUE)
+
+library(purrr)
+library(dplyr)
+library(viridis)
+library(ggplot2)
+theme_set(theme_minimal())
+```
+
+Background
+-----
+
+The undersampling of aquatic macroinvertebrates can impart important biases in many ecological metrics of interest. Morin 2004 identified this sampling bias for lengths of macroinvertebrates using nested mesh sizes. The parameterize a function of undersampling based on body lengths with the equation:
+
+$$P_i(l_i) = \frac{1}{1 + \frac{h}{l_{i}^{x}}}$$
+
+where, the probability of sampling, $P_i$ is a function of individual length, $l_i$ through the location and rate parameters, $h$ and $x$. The parameter $h$ controls the location of undersampling and $x$ controls the steepness of probability function (fig. 1).
+
+```{r sampling function setup}
+lengthVec = exp(seq(log(1e-3),log(1e2), length.out = 1000))
+
+pFunc = function(sVec = NULL, h = NULL, x = NULL, variable = c('mass', 'length'), transform = FALSE, a = 0.005, b = 2.778){
+  if('length' %in% variable & !transform){
+    p = 1/(1 + (h/(sVec^b)))
+  } else if('mass' %in% variable & !transform){
+    B = x/b
+    H = h*a^(x/b)
+    p = 1/(1 + (H/sVec^B))
+  }
+  
+  if('length' %in% variable & transform){
+    lVec = (sVec/a)^(1/b)
+    p = 1/(1 + (h/(lVec^b)))
+  } else if('mass' %in% variable & transform){
+    mVec = a*sVec^b
+    B = x/b
+    H = h*a^(x/b)
+    p = 1/(1 + (H/mVec^B))
+  }
+  return(p)
+}
+
+pList_fixedb = lapply(c(1e-5,1e-4,1e-3,1e-2,1e-1), function(x) pFunc(lengthVec, x, 1.5))
+
+pDf = map2(pList_fixedb, list(1e-5,1e-4,1e-3,1e-2,1e-1), \(x,y){
+  data.frame(l = lengthVec,
+             p = x,
+             h = y,
+             b = 1.5)
+} ) %>% bind_rows %>% 
+  mutate(h = as.character(h))
+```
+
+```{r sampling figs}
+pDf %>% 
+  ggplot()+
+  geom_path(aes(x = log10(l), y = p, group = h, color = h))+
+  scale_color_viridis(discrete = T)
+```
+
+```{r sampling function setup2}
+
+pList_fixedh = lapply(c(0.5,1,1.5,2,2.5), function(x) pFunc(lengthVec, 1e-3, x))
+
+pDf = map2(pList_fixedh, c(0.5,1,1.5,2,2.5), \(x,y){
+  data.frame(l = lengthVec,
+             p = x,
+             h = "1e-3",
+             b = y)
+} ) %>% bind_rows %>% 
+  mutate(b = as.character(b))
+```
+
+```{r sampling figs2}
+pDf %>% 
+  ggplot()+
+  geom_path(aes(x = log10(l), y = p, group = b, color = b))+
+  scale_color_viridis(discrete = T)
+```
+
+However, because mass increases with length in a non-linear fashion, retention probability based on length doesn't map directly to mass. The conversion is based on the relationship between mass and length, described the by relationship:
+
+$$M = a*L^b$$
+
+where mass, $M$, is related to length, $L$, but the parameters, $a$ and $b$. From this length-mass mapping we can describe the retention probability in mass terms as:
+
+$$P_i(m_i) = \frac{1}{1 + \frac{h}{(m_{i}/a)^{(x/b)}}}$$
+
+we can simplify this function to:
+
+$$P_i(m_i) = \frac{1}{1 + \frac{H}{m_{i}^{B}}}$$
+where,
+
+$$H = ha^{x/b}$$
+
+and,
+
+$$B = \frac{x}{b}$$
+
+this modifies the retention probabilities if we assume a general length-mass scaling relationship of $M = 0.005*L^2.778$:
+
+```{r length-mass retention}
+pList_l = pFunc(lengthVec, 1e-3, 1.5, variable = 'length', transform = FALSE)
+pList_m = pFunc(lengthVec, 1e-3, 1.5, variable = 'mass', transform = TRUE)
+
+pDf = data.frame(l = lengthVec,
+                 p = c(pList_l, pList_m),
+                 var = c(rep('length', length(lengthVec)),
+                         rep('mass', length(lengthVec))))
+
+```
+
+```{r length-mass plot}
+pDf %>% 
+  ggplot()+
+  geom_line(aes(x = log10(l), y = p, group = var, color = var))
+```
+
+
