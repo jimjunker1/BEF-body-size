@@ -212,9 +212,15 @@ dat = sampleParams %>%
   # n_tot = ..6
   filter(xmin_c < 1.5,
          lambda_med > -2.5) %>% 
-    mutate(m_old = pmap_dbl(.,~pareto_expectation(lambda = ..27,
+    mutate(mbar_old = pmap_dbl(.,~pareto_expectation(lambda = ..27,
                                                   xmin = ..4,
                                                   xmax = ..5)),
+           mbar_old_l = pmap_dbl(., ~pareto_expectation(lambda = ..28,
+                                                        xmin = ..4,
+                                                        xmax = ..5)),
+           mbar_old_u = pmap_dbl(., ~pareto_expectation(lambda = ..29,
+                                                        xmin = ..4,
+                                                        xmax = ..5)),
            lmbar_n_est = pmap_dbl(.,~log(pareto_expectation(lambda = ..27,
                                                   xmin = 0.006,
                                                   xmax = ..5))),
@@ -248,7 +254,7 @@ dat = sampleParams %>%
                                                    xmin = ..4,
                                                    xmin2 = 0.006,
                                                    xmax = ..5)),
-           b_old = m_old * n_tot,
+           b_old = mbar_old * n_tot,
            b_est = exp(lmbar_n_est) * n_est,
            lb_est = log(b_est),
            b_est_l = exp(lmbar_n_est_l) * n_est_l,
@@ -285,6 +291,94 @@ However, $M$ also encapsulates a wealth of other ecological information that is 
 
 Increasingly, the distribution of body sizes in populations and food webs has been identified as an integrative measure of ecological status.  The focus on a key organismal trait, body size, derives from body sizes importance 
 
+:::{r custom-style="text-box"}
+
+*Box 1. Describing the connection between Individual Size Distributions and the Cross Community Size Relationship*
+
+Intuitively, it seems there should be some connection between Individual Size Distributions (ISDs) and the Cross Community Scaling Relationship (CCSR) because the CCSR is essentially an aggregation of aspects of ISDs across communities. The connections have not been explicitly stated, yet, understanding the extent of their mathematical connections may help us better understand the ecological connections and the drivers of variation across scales. First, let's start out with a brief description of each, for more detailed discussion on the ISD, CCSR, and body size-abundance relationships more generally see White and coauthors [-@white2007].
+
+*Individual Size Distribution (ISD)*: Generally, this is the frequency distribution, or probability density, of body sizes in a community irrespective of taxonomic identity. The distribution of individual body sizes is often assumed to follow a power law, $N \propto M^{-\lambda}$, where $\lambda$ describes the rate of decline in **relative** abundance of organisms with increasing size. When applied across multi-trophic communities $\lambda$ is used as measure of trophic transfer efficiency [@mehner2018]. Importantly, $\lambda$ doesn't explicitly relate to **absolute** abundances as used in most cases. 
+
+*Cross Community Scaling Relationship (CCSR)*: The relationship between the average size of individuals in a community and the total number of individuals in the community. CCSRs are similarly assumed to follow a power law as, $N_{tot} \propto \overline{M}^{-b}$. These relationships are most often compared across assemblages that are monospecific or single trophic levels to explore self-thinning and energy-equivalence []. However, comparisons across multi-trophic microbial communities [@long2006] have shown communities converge along a single relationship ($b = -1$) despite differences in organism sizes and taxonomic richness.
+
+*Connecting the ISD to aspects of the CCSR*: The ISD of a community, derived from the probability distribution of community body sizes, is directly related to only one aspect of the community projection into CCSR space, specifically the mean body size of the community, $\overline{M}$. To derive this connection, we start with defining a community ISD with a upper and lower truncated Pareto distribution as in White and coauthors [-@white2008]:
+
+$$f(m) = \frac{(\lambda + 1)m^{\lambda}}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}} + \epsilon$$
+where dominant structure of the probability density of body sizes, $m$, bounded between a minimum body size, $m_{min}$, and maximum body size, $m_{max}$, is related to the scaling exponent, $\lambda$, along with some additional sampling error. Setting aside the error term, the mean body size, $E(m)$ is derived from the above probability function of abundances and biomasses as: 
+
+$$E(m) = \frac{(\lambda + 1)}{(m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1})} \cdot \frac{(m_{max}^{\lambda + 2} - m_{min}^{\lambda + 2})}{(\lambda + 2)}$$
+showing that the mean body size of a community projected into CCSR space is related to $\lambda$, $m_{min}$, and $m_{max}$ plus some sampling error. See Supplemental Materials for full derivation of this relationship.
+
+While this relationship highlights there is some connection between the ISD exponent of a community and where it is likely to fall along the x-axis in the CCSR space, two relevant points emerge: 1) Other community attributes are also important, specifically the mass range $[m_{min},m_{max}]$, and 2) there is no information needed about absolute abundances in the community. This last point is especially illuminating for exploring biodiversity--ecosystem functioning relationships in multi-trophic communities. Specifically, it decouples community body size patterns from processes that control the absolute number of individuals in a community, or where it falls along the y-axis in CCSR space.
+
+:::
+
+## Theory of body size--abundance
+
+# Methods
+
+We analyzed the community abundance, biomass, and size distributions from individual body masses of fish and macroinvertebrates collected by the National Ecological Observatory Network (NEON) from 2016 to 2022. NEON is a continental-scale ecological sampling program that uses standardized, automated sensor measurements coupled with observational field data and biological collections repeated across seasons (spring, summer, autumn), years (2015 to present), and space (across North America) (Fig. 2). The final data set included 59,083 measures from 114 fish species and 611,733 measures from 1,125 macroinvertebrates taxonomic groups (typically genus or species). The samples were typically collected 2-3 times per year at each of 21 sites, resulting in a total of 115 unique collection events. Below we describe how the data sets were merged to contain both fish and macroinvertebrates. Further details including a schematic overview of this workflow along with a step-by-step example of the fish resampling procedure, is provided in the supplemental materials of [@gjoni2026].
+
+### Macroinvertebrates
+
+NEON collected macroinvertebrate data via fixed-area samplers (e.g., Surber/Core/Kicknet) and measured insect body lengths to the nearest mm along with estimates of their density (individuals $m^{-2}$). While the samplers vary based on the stream characteristics (e.g., core samplers, Surber samplers, etc), all mesh sizes are the same (243 $\mu m$). Measurements of macroinvertebrate lengths spanned from 1 to 86 mm. We converted them to dry mass (mg) with published taxon-specific length-mass regressions [see @pomeranz2022]. 
+
+### Fish
+
+Fish were collected from each site twice per year (typically) using 3-pass removal electrofishing. For each collection, the first 50 fish per taxon were measured for wet mass (wm) in g (NEON 2022). We converted this to dry mass (dm) using the equation $dm = 0.2\times wm$ [@brey2010]. The remaining fish were tallied as a bulk count per species (without individual mass measures). Because individual body masses were measured only for a subset of individuals, raw measurements alone would not reflect “true” species abundances, particularly when total abundance varied widely among taxa. Using the three-pass depletion data, we estimated fish population density (individuals $m^{-2}$) in each collection using a multinomial Poisson depletion model [@royle2004]. We specified the model in R using the `ubms` package [@kellner2022]. The response variable was the number of fish caught per pass and the predictor variable was the collection id (site+date+reach = collection id). The model resulted in a population estimate for each collection, which we converted to individuals $m^{-2}$ by dividing each estimate by the sampled area (mean stream width x length of the electrofishing sample). We then multiplied that population estimate by the relative abundance of each fish species, resulting in an estimated density (individuals $m^{-2}$) of each fish species in each collection. Finally, we merged those estimates with the dry mass measurements and resampled the dry mass measures with replacement, weighted by species-specific density. This ensured that more abundant species contributed proportionally more individuals to the reconstructed size distribution, even when the number of measured body sizes was similar across taxa. An example of this procedure is given in Fig. S2 of [@gjoni2026]. Weighting by individuals per no/10,000 $m^{-2}$ instead of individuals $M^{-1}$ was necessary to ensure that enough body sizes were sampled (i.e., individuals $m^{-2}$ was typically <1). For each collection, we then summed the total number of individual body sizes and averaged their density estimates, resulting in a dataset containing individual-level body sizes (rather than species mean) estimates and their associated density for each collection [@gjoni2026].
+
+### Combining fish and macroinvertebrates
+
+Fish and macroinvertebrates were collected on different dates, with macroinvertebrates collected three times per year and fish collected twice. Therefore, to combine fish and macroinvertebrate samples, we limited the data to only collections that occurred within 30 days of each other. For example, if macroinvertebrates were collected on June 10 and fish collected on June 20, those samples were combined. If more than one sample was in the 30-day window (e.g., another fish collection on June 21), we selected the samples collected closest in time to each other in time to the paired collection, retaining only the most recent collection. The resulting data set contains body sizes ranging nine orders of magnitude (0.003 to 200,000 mg dry mass) along with their densities. We used this data set to estimate total community abundance (individuals $m^{-2}$), biomass (mg $m^{-2}$), and the individual size distributions (see Data Analysis). 
+
+## Environmental Data
+
+### Temperature
+
+To estimate mean annual stream temperature for each of the 21 sites, we obtained water temperature readings collected every four hours from 2016 to 2021 using the NEON data (Table S12). We removed data that did not pass NEON quality control checks as noted by NEON. Specifically, we  removed data that appeared unreasonably such as low (< -5°C) or high (> 50°C) temperatures. Some data for Alaskan streams is missing when the water is frozen. For those data, we assumed a temperature of 0°C. The resulting dataset contained 93,930 temperature readings. Temperature was modeled using a Bayesian generalized additive mixed model (GAMM), with a smooth term for temperature and year included as a random effect. Although the model has a generalized additive structure, it was fit within a Bayesian framework, allowing direct estimation of posterior distributions for the temperature effect. To reduce the data size for modeling, we estimated the mean weekly temperature and modeled that as a function of date and site using a Bayesian generalized additive mixed model with a Gaussian likelihood and year as a varying intercept. Mean weekly temperature was centered prior to modeling. This approach allowed us to have a posterior distribution of temperature predictions on each day over three years. From that posterior distribution, we calculated the mean annual temperature and standard deviation (Table 1) for each site.
+
+### Gross Primary Production
+
+We estimated regimes of annual gross primary production (GPP, g C m-2 y-1) through a multistep ensemble model process (https://github.com/jswesner/neon_size_spectra-slim). Daily time series of NEON sensor-based data for temperature, stream discharge, and oxygen concentration (see Table S12) were checked for data quality flags and visually inspected to identify potential errant data. We then estimated daily GPP from cleaned time series with maximum likelihood estimation through 15 different methods using the `streamMetabolizer` package (Appling et al. 2018). Methods varied in respect to discharge–gas exchange, photosynthetic rate–light, and photosynthetic rate–temperature relationships. From this model suite, we first calculated root mean squared error (RMSE) based on pointwise differences between predicted and observed daily oxygen series. This model suite was reduced by removing models that yielded unreasonably high estimates based on mean daily GPP (>13,000 g C m-2 y-1), correlation coefficients >0.95 between reaeration and ecosystem respiration, and particularly poor fits based on RMSE. From this filtered model suite, we created an ensemble model weighted by relative RMSE. Finally, to develop a general model of the GPP regime at each site, we fit a hierarchical generalized additive mixed model (GAMM) to ensemble estimated GPP by ‘day of year’ with ‘year’ treated as a random effect term. We summed the estimated ‘day of year’ fixed effect to quantify annual GPP for all sites. Annual GAMMs were fit with the `brms` package [@bürkner2017] with smoothing functions from the `mgcv` package [@wood2017].
+
+### Organic Matter
+
+We estimated the standing stock of organic matter from 45 unsorted bulk benthic samples in the NEON biorepository (at least two samples per site) [@yule2020]. The samples were collected at the same time as macroinvertebrate samples, using the same collection techniques (i.e., Surber sampler, core sampler). We obtained the raw samples from NEON and first removed macroinvertebrates. We dried the remaining organic matter at 60°C for >48 hours to bring to a constant mass. We then combusted samples at 500°C for four hours before reweighing to determine total organic matter mass. Samples were scaled to areal mass ($g \ m^{-2}$) by dividing total organic mass by the benthic area sampled (e.g., the area of the Surber sampler, core sampler, etc.).
+
+## Data Analysis
+
+### Estimating ISD scaling exponent $\lambda$ 
+
+To estimate ISDs for macroinvertebrate and fish communities, we used a Bayesian generalized linear mixed model with a truncated Pareto likelihood. A description and justification of this modelling approach for ISD’s is given in [@wesner2024]. The model structure was:
+
+$$x_{ijkl} \sim f(x_{jkl}; \lambda_{jkl}, m_{min}_{jkl}, m_{max}_{jkl}, counts_{ijkl})$$
+where $x_{ijkl}$ is the $i$th body size from sample $j$ in site $k$ and year $l$. The likelihood $f(…)$ is a truncated Pareto with a single free parameter $\lambda_{jkl}$, the exponent of the ISD. $m_{min}_{jkl}$ and $m_{max}_{jkl}$ are the minimum and maximum body sizes in each sample, site, and year. $m_{min}_{jkl}$ was chosen as the smallest body size in each sample for which the data most closely match a power law using the `estimate_xmin()` function from the `poweRlaw` package [@gillespie2024]. This method ensures that estimates of $\lambda$ are not biased from undersampling of small individuals [@virkar2014]. Each body size has a corresponding density in units of number individuals $m^{-2}$, represented by $counts_{ijkl}$, as described in [@edwards2017a]. 
+
+Priors for the intercept were $Normal(-2, 0.5)$, chosen based on theoretical predictions [@reuman2008] and previous analysis of ISD values in streams [@pomeranz2022]. These priors were chosen based on prior predictive simulation [@wesner2021] to center the prior probabilities of $\lambda$ between about -2.5 to -1 while still allowing probabilities at very large (e.g., 1) or small values (e.g., -4).
+
+### Standardizing Total Abundance to fixed m~min~
+
+As mentioned above, sampling of organisms contains varying known and unknown sources of sampling bias. For macroinvertebrates in particular, small sized individuals are known to be poorly sampled by standard mesh sizes of the sampler [@morin2004]. To account for this bias, we used a procedure to exclude small body sizes to allow for unbiased estimation of $\lambda$. However, this approach leads to differing minimum body sizes from sample to sample. To standardize estimates of abundances to a fixed minimum body size, $m_{min}$, across all samples, we extrapolated abundances to a fixed $m_{min}$ for all samples to the smallest $m_{min}$ estimated across all samples with a PDF normalization procedure. First, we estimated the lower body size bound with the `estimate_xmin()` function, $m_{min}_{est}$. We then convert the probability distribution to a count density function using the total count within the body size range $[m_{min}_{est},m_{max}]$ as:
+
+$$ n = \int_{m_{min}}^{m_{max}} cm^{\lambda} dm$$
+
+where, $c$ is a density normalizer that converts the probability density function to a count density function as:
+
+$$ c = n \frac{(\lambda + 1)}{m_{max}^{\lambda + 1} - m_{min}^{\lambda +1}}$$
+
+$c$ is directly proportional to $n$. Therefore, if we have adequately sampled the community from which we are estimating $\lambda$ and we make the assumption that the power law structure of distribution of body sizes holds to lower body sizes, $c$ acts as a location parameter to scale expected abundance to a different minimum body size $m_{min}_{new}$ as:
+
+$$N_{new} = N_{cutoff} \cdot \frac{m_{max}^{\lambda + 1} - m_{min}_{est}^{\lambda + 1}}{m_{max}^{\lambda + 1} - m_{min}_{new}^{\lambda + 1}}$$
+See Supplemental Materials for further derivation. Maximum body size, $m_{max}$, was set as the maximum body size observed in the sample. We did not adjust $m_{max}$ because there was no known sampling bias for larger body sizes, as there is for smaller body sizes, and the upper size limit is likely a function of the maximum body size attainable in the community--an attribute with ecological determinant--and the sampling effort, which was similar across sites and sampling events. Further, total community abundances are likley to be minimally influenced by the upper bound because abundances in upper part of the mass range are considerably lower than in the lower size range. 
+
+### Cross community scaling ($N \sim M$)
+
+To estimate the cross community scaling relationship, we first went through a process to account for systematic undersampling of small individuals in the data set. This is a known problem,
+
+
+
+
+We fit all models in `rstan` [@stan2024] via the `brms` [@bürkner2017] and `isdbayes` [@wesner2023a] packages in R. Model fit was checked using posterior predictive checks and prior influence was checked using prior predictive simulation (Fig. S3-5).
 
 ## Richness models
 
@@ -1346,57 +1440,7 @@ dat %>%
 
 
 
-## Theory of body size--abundance
 
-# Methods
-
-We analyzed the community abundance, biomass, and size distributions using 670,816 individual body masses of fish and macroinvertebrates collected by the National Ecological Observatory Network (NEON) from 2016 to 2022. NEON is a continental-scale ecological sampling program that uses standardized, automated sensor measurements coupled with observational field data and biological collections repeated across seasons (spring, summer, autumn), years (2015 to present), and space (across North America) (Fig. 2). The final data set included 59,083 measures from 114 fish species and 611,733 measures from 1,125 macroinvertebrates taxonomic groups (typically genus or species). The samples were typically collected 2-3 times per year at each of 21 sites, resulting in a total of 115 unique collection events. Below we describe how the data sets were merged to contain both fish and macroinvertebrates. Further details including a schematic overview of this workflow along with a step-by-step example of the fish resampling procedure, is provided in the supplemental materials of [@gjoni2026].
-
-### Macroinvertebrates
-
-NEON collected macroinvertebrate data via fixed-area samplers (e.g., Surber/Core/Kicknet) and measured insect body lengths to the nearest mm along with estimates of their density (individuals $m^{-2}$). While the samplers vary based on the stream characteristics (e.g., core samplers, Surber samplers, etc), all mesh sizes are the same (243 $\mu m$). Measurements of macroinvertebrate lengths spanned from 1 to 86 mm. We converted them to dry mass (mg) with published taxon-specific length-mass regressions [see @pomeranz2022]. 
-
-### Fish
-
-Fish were collected from each site twice per year (typically) using 3-pass removal electrofishing. For each collection, the first 50 fish per taxon were measured for wet mass (wm) in g (NEON 2022). We converted this to dry mass (dm) using the equation $dm = 0.2\times wm$ [@brey2010]. The remaining fish were tallied as a bulk count per species (without individual mass measures). Because individual body masses were measured only for a subset of individuals, raw measurements alone would not reflect “true” species abundances, particularly when total abundance varied widely among taxa. Using the three-pass depletion data, we estimated fish population density (individuals $m^{-2}$) in each collection using a multinomial Poisson depletion model [@royle2004]. We specified the model in R using the `ubms` package [@kellner2022]. The response variable was the number of fish caught per pass and the predictor variable was the collection id (site+date+reach = collection id). The model resulted in a population estimate for each collection, which we converted to individuals $m^{-2}$ by dividing each estimate by the sampled area (mean stream width x length of the electrofishing sample). We then multiplied that population estimate by the relative abundance of each fish species, resulting in an estimated density (individuals $m^{-2}$) of each fish species in each collection. Finally, we merged those estimates with the dry mass measurements and resampled the dry mass measures with replacement, weighted by species-specific density. This ensured that more abundant species contributed proportionally more individuals to the reconstructed size distribution, even when the number of measured body sizes was similar across taxa. An example of this procedure is given in Fig. S2 of [@gjoni2026]. Weighting by individuals per no/10,000 $m^{-2}$ instead of individuals $M^{-1}$ was necessary to ensure that enough body sizes were sampled (i.e., individuals $m^{-2}$ was typically <1). For each collection, we then summed the total number of individual body sizes and averaged their density estimates, resulting in a dataset containing individual-level body sizes (rather than species mean) estimates and their associated density for each collection [@gjoni2026].
-
-### Combining fish and macroinvertebrates
-
-Fish and macroinvertebrates were collected on different dates, with macroinvertebrates collected three times per year and fish collected twice. Therefore, to combine fish and macroinvertebrate samples, we limited the data to only collections that occurred within 30 days of each other. For example, if macroinvertebrates were collected on June 10 and fish collected on June 20, those samples were combined. If more than one sample was in the 30-day window (e.g., another fish collection on June 21), we selected the samples collected closest in time to each other in time to the paired collection, retaining only the most recent collection. The resulting data set contains body sizes ranging nine orders of magnitude (0.003 to 200,000 mg dry mass) along with their densities. We used this data set to estimate total community abundance (individuals $m^{-2}$), biomass (mg $m^{-2}$), and the individual size distributions (see Data Analysis). 
-
-## Environmental Data
-
-### Temperature
-
-To estimate mean annual stream temperature for each of the 21 sites, we obtained water temperature readings collected every four hours from 2016 to 2021 using the NEON data (Table S12). We removed data that did not pass NEON quality control checks as noted by NEON. Specifically, we  removed data that appeared unreasonably such as low (< -5°C) or high (> 50°C) temperatures. Some data for Alaskan streams is missing when the water is frozen. For those data, we assumed a temperature of 0°C. The resulting dataset contained 93,930 temperature readings. Temperature was modeled using a Bayesian generalized additive mixed model (GAMM), with a smooth term for temperature and year included as a random effect. Although the model has a generalized additive structure, it was fit within a Bayesian framework, allowing direct estimation of posterior distributions for the temperature effect. To reduce the data size for modeling, we estimated the mean weekly temperature and modeled that as a function of date and site using a Bayesian generalized additive mixed model with a Gaussian likelihood and year as a varying intercept. Mean weekly temperature was centered prior to modeling. This approach allowed us to have a posterior distribution of temperature predictions on each day over three years. From that posterior distribution, we calculated the mean annual temperature and standard deviation (Table 1) for each site.
-
-### Gross Primary Production
-
-We estimated regimes of annual gross primary production (GPP, g C m-2 y-1) through a multistep ensemble model process (https://github.com/jswesner/neon_size_spectra-slim). Daily time series of NEON sensor-based data for temperature, stream discharge, and oxygen concentration (see Table S12) were checked for data quality flags and visually inspected to identify potential errant data. We then estimated daily GPP from cleaned time series with maximum likelihood estimation through 15 different methods using the `streamMetabolizer` package (Appling et al. 2018). Methods varied in respect to discharge–gas exchange, photosynthetic rate–light, and photosynthetic rate–temperature relationships. From this model suite, we first calculated root mean squared error (RMSE) based on pointwise differences between predicted and observed daily oxygen series. This model suite was reduced by removing models that yielded unreasonably high estimates based on mean daily GPP (>13,000 g C m-2 y-1), correlation coefficients >0.95 between reaeration and ecosystem respiration, and particularly poor fits based on RMSE. From this filtered model suite, we created an ensemble model weighted by relative RMSE. Finally, to develop a general model of the GPP regime at each site, we fit a hierarchical generalized additive mixed model (GAMM) to ensemble estimated GPP by ‘day of year’ with ‘year’ treated as a random effect term. We summed the estimated ‘day of year’ fixed effect to quantify annual GPP for all sites. Annual GAMMs were fit with the `brms` package [@bürkner2017] with smoothing functions from the `mgcv` package [@wood2017].
-
-### Organic Matter
-
-We estimated the standing stock of organic matter from 45 unsorted bulk benthic samples in the NEON biorepository (at least two samples per site) [@yule2020]. The samples were collected at the same time as macroinvertebrate samples, using the same collection techniques (i.e., Surber sampler, core sampler). We obtained the raw samples from NEON and first removed macroinvertebrates. We dried the remaining organic matter at 60°C for >48 hours to bring to a constant mass. We then combusted samples at 500°C for four hours before reweighing to determine total organic matter mass. Samples were scaled to areal mass ($g \ m^{-2}$) by dividing total organic mass by the benthic area sampled (e.g., the area of the Surber sampler, core sampler, etc.).
-
-## Data Analysis
-
-To examine how the ISD varied as a function of temperature and resources, we used a Bayesian generalized linear mixed model with a truncated Pareto likelihood. A description and justification of this modelling approach for ISD’s is given in [@wesner2024]. The model structure was:
-$$x_ijkl \sim f(x_{jkl}; λ_{jkl},x_{min}_{jkl},x_{max}_{jkl}, counts_{ijkl})$$
-$$λ_{jkl}  = a + βZ + γ_{k:j}+ γ_{l} + b_{l}Z$$
-
-where $x_{ijkl}$ is the $i$th body size from sample $j$ in site $k$ and year $l$. The likelihood $f(…)$ is a truncated Pareto with a single free parameter λ_$jkl$, the exponent of the ISD. $x_{min}_{jkl}$ and $x_{max}_{jkl}$ are the minimum and maximum body sizes in each sample, site, and year. 
-$x_{min}_{jkl}$ was chosen as the smallest body size in each sample for which the data most closely match a power law using the `estimate_xmin()` function from the `poweRlaw` package [@gillespie2024]. This method ensures that estimates of $\lambda$ are not biased from undersampling of small individuals [@virkar2014]. Each body size has a corresponding density in units of number individuals $m^{-2}$, represented by $counts_{ijkl}$, as described in [@edwards2017a]. $\lambda_{jkl}$ is modeled as a linear function of an intercept $\alpha$ and $\beta Z$ represents the single, two, and three-way interactions of the $Z$ predictors of mean annual temperature, mean annual GPP, and standing stock organic matter. All predictors were standardized as z-scores prior to fitting. Varying intercepts are included for individual sample $j$ nested within sites ($k_{\gamma_{k:j}$) and year ($\gamma_{l}$) along with varying slopes, including interactions, by year $b_{l} Z$. To improve sampling efficiency, the varying intercepts were modeled using non-centered parameterization, which is excluded here for clarity, but is present in the Stan model code: https://github.com/jswesner/neon_size_spectra-slim.
-
-Priors for the intercept were $Normal(-2, 0.5)$, chosen based on theoretical predictions [@reuman2008] and previous analysis of ISD values in streams [@pomeranz2022]. Priors for each $\beta$ parameter were set to $Normal(0, 0.2)$. Priors for the $q$ varying intercepts were $Normal(0, sq)$, with each $sq$ hyperprior set to $Exponential(7)$. These priors were chosen based on prior predictive simulation [@wesner2021] to center the prior probabilities of $\lambda$ between about -2.5 to -1 while still allowing probabilities at very large (e.g., 1) or small values (e.g., -4) (Fig. S31).
-
-### Cross community scaling ($N \sim M$)
-
-To estimate the cross community scaling relationship, we first went through a process to account for systematic undersampling of small individuals in the data set. This is a known problem,
-
-
-
-
-We fit all models in `rstan` [@stan2024] via the `brms` [@bürkner2017] and `isdbayes` [@wesner2023a] packages in R. Model fit was checked using posterior predictive checks and prior influence was checked using prior predictive simulation (Fig. S3-5).
 
 
 
@@ -1791,6 +1835,33 @@ To explore drivers of over- or under-yielding,
 \newpage
 
 # Appendix 
+
+## Observed versus estimated mean body size
+
+```{r mbar est hist}
+y = dat %>% 
+  mutate(m_error = (mbar_old - mbar_n)/mbar_n) %>% 
+  dplyr::select(m_error) %>% 
+  unlist
+
+hist(y)
+```
+
+```{r mbar obs v est}
+
+dat %>% 
+  mutate(m_error = (mbar_old - mbar_n)/mbar_n) %>% 
+  ggplot()+
+  geom_errorbar(aes(x = mbar_n, y = mbar_old, ymin = mbar_old_l, ymax = mbar_old_u))+
+  geom_point(aes(x = mbar_n, y = mbar_old, fill = m_error), shape = 21, size = 2)+
+  geom_abline()+
+  scale_y_continuous(name = expression(~bar(M)[estimated]))+
+  scale_x_continuous(name = expression(~bar(M)[observed]))+
+  scale_fill_viridis()+
+  coord_transform('log')
+
+
+```
 
 ## Body size treatment
 

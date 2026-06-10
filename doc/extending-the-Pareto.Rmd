@@ -28,6 +28,7 @@ Deriving $N_{new}$ using PDF normalization
 1. Define the total count in [$m_{min}$,$m_{max}$] as the integral of a density count function, $N(m) = cm^{\lambda}$:
 
 $$ n = \int_{m_{min}}^{m_{max}} cm^{\lambda} dm$$
+
 where, $c$ is the density normalizer. The density normalizer simply converts the probability density function into a count density function as:
 
 $$ c = n \frac{(\lambda + 1)}{m_{max}^{\lambda + 1} - m_{min}^{\lambda +1}}$$
@@ -154,7 +155,7 @@ Now, I would like to extend this framework to think more intently about the conn
 
 \end{aligned}
 
-So if we fix the mass range, $[m_{min}, m_{max}]$, we can how $\overline M$ scales with $\lambda$, non-linearly depending on the mass ranges.
+So if we fix the mass range, $[m_{min}, m_{max}]$, we can see how $\overline M$ scales with $\lambda$, non-linearly depending on the mass ranges.
 
 ```{r mbar-lambda-scaling, echo = FALSE}
 

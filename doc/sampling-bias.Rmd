@@ -6,7 +6,7 @@ output: html_document
 
 ```{r internal functions, echo = FALSE, message = FALSE, warning=FALSE}
 here::i_am('doc/sampling-bias.Rmd')
-source(here::here("R/helpers.R"))
+# source(here::here("R/helpers.R"))
 
 #set default plotting
 old.par = par(no.readonly = TRUE)
@@ -28,11 +28,11 @@ $$P_i(l_i) = \frac{1}{1 + \frac{h}{l_{i}^{x}}}$$
 where, the probability of sampling, $P_i$ is a function of individual length, $l_i$ through the location and rate parameters, $h$ and $x$. The parameter $h$ controls the location of undersampling and $x$ controls the steepness of probability function (fig. 1).
 
 ```{r sampling function setup}
-lengthVec = exp(seq(log(1e-3),log(1e2), length.out = 1000))
+lengthVec = exp(seq(log(1e-2),log(1e1), length.out = 1000))
 
 pFunc = function(sVec = NULL, h = NULL, x = NULL, variable = c('mass', 'length'), transform = FALSE, a = 0.005, b = 2.778){
   if('length' %in% variable & !transform){
-    p = 1/(1 + (h/(sVec^b)))
+    p = 1/(1 + (h/(sVec^x)))
   } else if('mass' %in% variable & !transform){
     B = x/b
     H = h*a^(x/b)
@@ -41,7 +41,7 @@ pFunc = function(sVec = NULL, h = NULL, x = NULL, variable = c('mass', 'length')
   
   if('length' %in% variable & transform){
     lVec = (sVec/a)^(1/b)
-    p = 1/(1 + (h/(lVec^b)))
+    p = 1/(1 + (h/(lVec^x)))
   } else if('mass' %in% variable & transform){
     mVec = a*sVec^b
     B = x/b
@@ -51,7 +51,7 @@ pFunc = function(sVec = NULL, h = NULL, x = NULL, variable = c('mass', 'length')
   return(p)
 }
 
-pList_fixedb = lapply(c(1e-5,1e-4,1e-3,1e-2,1e-1), function(x) pFunc(lengthVec, x, 1.5))
+pList_fixedb = lapply(c(1e-5,1e-4,1e-3,1e-2,1e-1), function(x) pFunc(sVec = lengthVec, x, 1.5, variable = 'length', transform = FALSE))
 
 pDf = map2(pList_fixedb, list(1e-5,1e-4,1e-3,1e-2,1e-1), \(x,y){
   data.frame(l = lengthVec,
@@ -59,19 +59,21 @@ pDf = map2(pList_fixedb, list(1e-5,1e-4,1e-3,1e-2,1e-1), \(x,y){
              h = y,
              b = 1.5)
 } ) %>% bind_rows %>% 
-  mutate(h = as.character(h))
+  mutate(h = factor(h, levels = c("1e-05","1e-04", "0.001","0.01","0.1")))
 ```
 
 ```{r sampling figs}
+x_breaks = c(-2, -1.5, -1,-0.5,0,0.5,1)
+x_labs = round(10^(x_breaks),2)
 pDf %>% 
   ggplot()+
-  geom_path(aes(x = log10(l), y = p, group = h, color = h))+
+  geom_path(aes(x = log10(l), y = p, group = h, color = h), linewidth = 1)+
+  scale_x_continuous(name = 'length (mm)', breaks = x_breaks, labels = x_labs)+
   scale_color_viridis(discrete = T)
 ```
 
 ```{r sampling function setup2}
-
-pList_fixedh = lapply(c(0.5,1,1.5,2,2.5), function(x) pFunc(lengthVec, 1e-3, x))
+pList_fixedh = lapply(c(0.5,1,1.5,2,2.5), function(x) pFunc(lengthVec, h = 1e-3, x = x, variable = 'length', transform = FALSE))
 
 pDf = map2(pList_fixedh, c(0.5,1,1.5,2,2.5), \(x,y){
   data.frame(l = lengthVec,
@@ -85,15 +87,16 @@ pDf = map2(pList_fixedh, c(0.5,1,1.5,2,2.5), \(x,y){
 ```{r sampling figs2}
 pDf %>% 
   ggplot()+
-  geom_path(aes(x = log10(l), y = p, group = b, color = b))+
+  geom_line(aes(x = log10(l), y = p, group = b, color = b), linewidth = 1)+
+  scale_x_continuous(name = 'length (mm)', breaks = x_breaks, labels = x_labs)+
   scale_color_viridis(discrete = T)
 ```
 
-However, because mass increases with length in a non-linear fashion, retention probability based on length doesn't map directly to mass. The conversion is based on the relationship between mass and length, described the by relationship:
+However, because mass increases with length in a non-linear fashion, retention probability based on length doesn't map directly to mass. The conversion is based on the relationship between mass and length, described by the relationship:
 
 $$M = a*L^b$$
 
-where mass, $M$, is related to length, $L$, but the parameters, $a$ and $b$. From this length-mass mapping we can describe the retention probability in mass terms as:
+where mass, $M$, is related to length, $L$, by the parameters, $a$ and $b$. From this length-mass mapping we can describe the retention probability in mass terms as:
 
 $$P_i(m_i) = \frac{1}{1 + \frac{h}{(m_{i}/a)^{(x/b)}}}$$
 
@@ -108,23 +111,31 @@ and,
 
 $$B = \frac{x}{b}$$
 
-this modifies the retention probabilities if we assume a general length-mass scaling relationship of $M = 0.005*L^2.778$:
+this modifies the retention probabilities if we assume a general length-mass scaling relationship of $M = 0.005*L^{2.778}$:
 
 ```{r length-mass retention}
-pList_l = pFunc(lengthVec, 1e-3, 1.5, variable = 'length', transform = FALSE)
-pList_m = pFunc(lengthVec, 1e-3, 1.5, variable = 'mass', transform = TRUE)
+# debugonce(pFunc)
+pList_l = pFunc(lengthVec, 1e-1, 2.5, variable = 'length', transform = FALSE)
+
+pList_m = pFunc(lengthVec, 1e-1, 2.5, variable = 'mass', transform = TRUE)
 
 pDf = data.frame(l = lengthVec,
                  p = c(pList_l, pList_m),
                  var = c(rep('length', length(lengthVec)),
-                         rep('mass', length(lengthVec))))
+                         rep('mass', length(lengthVec)))) %>% 
+  mutate(sVec = case_when(var == 'mass' ~ 0.005*l^2.778,
+                             .default = l))
 
 ```
 
 ```{r length-mass plot}
+
 pDf %>% 
   ggplot()+
-  geom_line(aes(x = log10(l), y = p, group = var, color = var))
+  geom_line(aes(x = log10(sVec), y = p, group = var, color = var), linewidth = 1)+
+  scale_y_continuous(limits = c(0,1))+
+  scale_x_continuous(name = 'size (mg | mm)')+
+  scale_color_viridis(discrete = TRUE, end = 0.8)
 ```
 
 
