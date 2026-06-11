@@ -322,3 +322,10 @@ ggplot(sim_results,
   ylab("Relative error in estimated abundance") +
   xlab("Sampling threshold") +
   theme_bw()
+  
+  
+## Considering the relationship between ISD and variances in N and M
+
+Pigot et al. 2025 suggest that the abundance-mass relationship ($N \propto M^{-\lambda}$ is a unifying attribute that can help explain biomass scaling with richness. This is interesting. They further suggest that $\lambda$ can be adjusted by the variance in $log(N)$ and $log(M)$. This is an proposal I find issues with. From the deterministic model, the variance in abundances should be largely determined by $\lambda$ and the variance in masses is determined by $\lambda$ and the mass range in the community. For example, $\lambda$ is describing the rate of reduction in abundance with log(mass). Generally speaking, $\sigma^{2} log(A)$ should be derivable from $\lambda$ itself. So multiplying $\lambda$ by $\sigma^{2} log(A)$ is multiplying it by a function of itself with some additional error, largely determined by how well mass explains abundance (i.e. $R^2$). I
+
+

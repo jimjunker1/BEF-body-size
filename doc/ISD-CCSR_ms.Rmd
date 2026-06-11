@@ -106,6 +106,7 @@ H_summ = H_dat %>%
             hill_0 = mean(hill_0),
             hill_1 = mean(hill_1),
             hill_2 = mean(hill_2),
+            count = count(site_id),
             .by = c('site_id')
             ) %>% 
   mutate(across(where(is.numeric), round)) %>% 
@@ -291,17 +292,21 @@ However, $M$ also encapsulates a wealth of other ecological information that is 
 
 Increasingly, the distribution of body sizes in populations and food webs has been identified as an integrative measure of ecological status.  The focus on a key organismal trait, body size, derives from body sizes importance 
 
+The CCSR can take a number of forms, however, it is generally predicted that the decrease in total abundance with increasing mean community body size should reflect the energy use of the average individual []. However, it multi-trophic communities inefficient energy transfer among
+
+Here, we explore the relationship between over- and under-yielding of individuals and biomass in multi-trophic food webs in stream ecosystems across a continental scale gradient. Specifically, we address the questions 1) Do more species-rich communities exhibit overyielding in individuals and biomass? and 2) Are overyielding communities associated with more efficient energy transfer?. To do so, we expand on a framework developed from allometric theory and the abundance-mass relationships within and across communities. Lastly, within this framework we address the community attributes associated with patterns of species richness and overyielding. 
+
 :::{r custom-style="text-box"}
 
 *Box 1. Describing the connection between Individual Size Distributions and the Cross Community Size Relationship*
 
-Intuitively, it seems there should be some connection between Individual Size Distributions (ISDs) and the Cross Community Scaling Relationship (CCSR) because the CCSR is essentially an aggregation of aspects of ISDs across communities. The connections have not been explicitly stated, yet, understanding the extent of their mathematical connections may help us better understand the ecological connections and the drivers of variation across scales. First, let's start out with a brief description of each, for more detailed discussion on the ISD, CCSR, and body size-abundance relationships more generally see White and coauthors [-@white2007].
+Intuitively, it seems there should be some connection between Individual Size Distributions (ISDs) and the Cross Community Scaling Relationship (CCSR) because the CCSR is essentially an aggregation of aspects of ISDs across communities. The connections have not been explicitly stated, yet, understanding the extent of their mathematical connections may help us better understand the ecological connections and the drivers of variation across scales. First, let's start out with a brief description of each, for more detailed discussion on the ISD, CCSR, and abundance-body size relationships more generally see White and coauthors [-@white2007].
 
-*Individual Size Distribution (ISD)*: Generally, this is the frequency distribution, or probability density, of body sizes in a community irrespective of taxonomic identity. The distribution of individual body sizes is often assumed to follow a power law, $N \propto M^{-\lambda}$, where $\lambda$ describes the rate of decline in **relative** abundance of organisms with increasing size. When applied across multi-trophic communities $\lambda$ is used as measure of trophic transfer efficiency [@mehner2018]. Importantly, $\lambda$ doesn't explicitly relate to **absolute** abundances as used in most cases. 
+*Individual Size Distribution (ISD)*: Generally, this is the frequency distribution, or probability density, of body sizes in a community irrespective of taxonomic identity. The distribution of individual body sizes is often assumed to follow a power law, $N \propto M^{-\lambda}$, where $\lambda$ describes the rate of decline in **relative** abundance of organisms with increasing size. When applied across multi-trophic communities $\lambda$ is used as a measure of trophic transfer efficiency [@mehner2018; @brown2004]. Importantly, $\lambda$ doesn't explicitly relate to **absolute** abundances as used in most cases. 
 
-*Cross Community Scaling Relationship (CCSR)*: The relationship between the average size of individuals in a community and the total number of individuals in the community. CCSRs are similarly assumed to follow a power law as, $N_{tot} \propto \overline{M}^{-b}$. These relationships are most often compared across assemblages that are monospecific or single trophic levels to explore self-thinning and energy-equivalence []. However, comparisons across multi-trophic microbial communities [@long2006] have shown communities converge along a single relationship ($b = -1$) despite differences in organism sizes and taxonomic richness.
+*Cross Community Scaling Relationship (CCSR)*: The relationship between the average body size and the total number of individuals across communities. CCSRs are similarly often described by a power law as, $N_{tot} \propto \overline{M}^{-b}$. These relationships are most often compared across assemblages that are monospecific or single trophic levels to explore self-thinning and energy-equivalence []. However, comparisons across multi-trophic microbial communities [@long2006] have shown communities to converge along a single relationship ($b = -1$) despite differences in organism sizes and taxonomic richness.
 
-*Connecting the ISD to aspects of the CCSR*: The ISD of a community, derived from the probability distribution of community body sizes, is directly related to only one aspect of the community projection into CCSR space, specifically the mean body size of the community, $\overline{M}$. To derive this connection, we start with defining a community ISD with a upper and lower truncated Pareto distribution as in White and coauthors [-@white2008]:
+*Connecting the ISD to aspects of the CCSR*: The ISD of a community, derived from the probability distribution of community body sizes, is directly related to only one aspect of the community projected into CCSR space, specifically the mean body size of the community, $\overline{M}$. To derive this connection, we start with defining a community ISD with a upper and lower truncated Pareto distribution as in White and coauthors [-@white2008]:
 
 $$f(m) = \frac{(\lambda + 1)m^{\lambda}}{m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1}} + \epsilon$$
 where dominant structure of the probability density of body sizes, $m$, bounded between a minimum body size, $m_{min}$, and maximum body size, $m_{max}$, is related to the scaling exponent, $\lambda$, along with some additional sampling error. Setting aside the error term, the mean body size, $E(m)$ is derived from the above probability function of abundances and biomasses as: 
@@ -309,7 +314,7 @@ where dominant structure of the probability density of body sizes, $m$, bounded 
 $$E(m) = \frac{(\lambda + 1)}{(m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1})} \cdot \frac{(m_{max}^{\lambda + 2} - m_{min}^{\lambda + 2})}{(\lambda + 2)}$$
 showing that the mean body size of a community projected into CCSR space is related to $\lambda$, $m_{min}$, and $m_{max}$ plus some sampling error. See Supplemental Materials for full derivation of this relationship.
 
-While this relationship highlights there is some connection between the ISD exponent of a community and where it is likely to fall along the x-axis in the CCSR space, two relevant points emerge: 1) Other community attributes are also important, specifically the mass range $[m_{min},m_{max}]$, and 2) there is no information needed about absolute abundances in the community. This last point is especially illuminating for exploring biodiversity--ecosystem functioning relationships in multi-trophic communities. Specifically, it decouples community body size patterns from processes that control the absolute number of individuals in a community, or where it falls along the y-axis in CCSR space.
+While this relationship highlights there is some connection between the ISD exponent of a community and where it is likely to fall along the x-axis in the CCSR space, two relevant points emerge: 1) Other community attributes are also important, specifically the range of body masses $[m_{min},m_{max}]$, and 2) there is no information needed about absolute abundances in the community. This last point is especially illuminating for exploring biodiversity--ecosystem functioning relationships in multi-trophic communities. Specifically, it decouples community body size patterns from processes that control the absolute number of individuals in a community, or where it falls along the y-axis in CCSR space.
 
 :::
 
@@ -317,11 +322,23 @@ While this relationship highlights there is some connection between the ISD expo
 
 # Methods
 
+- NEON data set sampling procedures
+
+- Combining fish and macros
+
+- Environmental variables (maybe ditch depending on the final analysis)
+
+- Estimating lambda
+
+- Correcting total abundance
+
+- 
+
 We analyzed the community abundance, biomass, and size distributions from individual body masses of fish and macroinvertebrates collected by the National Ecological Observatory Network (NEON) from 2016 to 2022. NEON is a continental-scale ecological sampling program that uses standardized, automated sensor measurements coupled with observational field data and biological collections repeated across seasons (spring, summer, autumn), years (2015 to present), and space (across North America) (Fig. 2). The final data set included 59,083 measures from 114 fish species and 611,733 measures from 1,125 macroinvertebrates taxonomic groups (typically genus or species). The samples were typically collected 2-3 times per year at each of 21 sites, resulting in a total of 115 unique collection events. Below we describe how the data sets were merged to contain both fish and macroinvertebrates. Further details including a schematic overview of this workflow along with a step-by-step example of the fish resampling procedure, is provided in the supplemental materials of [@gjoni2026].
 
 ### Macroinvertebrates
 
-NEON collected macroinvertebrate data via fixed-area samplers (e.g., Surber/Core/Kicknet) and measured insect body lengths to the nearest mm along with estimates of their density (individuals $m^{-2}$). While the samplers vary based on the stream characteristics (e.g., core samplers, Surber samplers, etc), all mesh sizes are the same (243 $\mu m$). Measurements of macroinvertebrate lengths spanned from 1 to 86 mm. We converted them to dry mass (mg) with published taxon-specific length-mass regressions [see @pomeranz2022]. 
+NEON collected macroinvertebrate data via fixed-area samplers (e.g., Surber/Core/Kicknet) and measured insect body lengths to the nearest mm along with estimates of their density (individuals $m^{-2}$). While the samplers vary based on the stream characteristics (e.g., core samplers, Surber samplers, etc), all mesh sizes are the same (243 $\mu m$). Measurements of macroinvertebrate lengths spanned from 1 to 86 mm. We converted them to dry mass (mg) with published taxon-specific length-mass regressions [@benke1999; see @pomeranz2022]. 
 
 ### Fish
 
@@ -330,6 +347,10 @@ Fish were collected from each site twice per year (typically) using 3-pass remov
 ### Combining fish and macroinvertebrates
 
 Fish and macroinvertebrates were collected on different dates, with macroinvertebrates collected three times per year and fish collected twice. Therefore, to combine fish and macroinvertebrate samples, we limited the data to only collections that occurred within 30 days of each other. For example, if macroinvertebrates were collected on June 10 and fish collected on June 20, those samples were combined. If more than one sample was in the 30-day window (e.g., another fish collection on June 21), we selected the samples collected closest in time to each other in time to the paired collection, retaining only the most recent collection. The resulting data set contains body sizes ranging nine orders of magnitude (0.003 to 200,000 mg dry mass) along with their densities. We used this data set to estimate total community abundance (individuals $m^{-2}$), biomass (mg $m^{-2}$), and the individual size distributions (see Data Analysis). 
+
+### Stream species richness
+
+species richness for each stream site was calculated as the effective number of species with Hill numbers [], specifically when $q$ = 0 using the `hillR` package []. Species occurrences from all sampling dates was combined for each site to calculated a site-level species richness estimate for each stream. While sampling effort varied across sites, with the number of individual sampling dates ranging from `r min(H_summ$count)` to `r max(H_summ$count)`, calculated site-level species richness was only weakly related to the number of sampling dates (`r cor(H_summ$count, H_summ$hill_0)`) and the observed species richness described by $Hill^{q = 0}$ was strongly correlated (r > 0.88) with rarified estimators of species richness.
 
 ## Environmental Data
 
@@ -358,7 +379,7 @@ Priors for the intercept were $Normal(-2, 0.5)$, chosen based on theoretical pre
 
 ### Standardizing Total Abundance to fixed m~min~
 
-As mentioned above, sampling of organisms contains varying known and unknown sources of sampling bias. For macroinvertebrates in particular, small sized individuals are known to be poorly sampled by standard mesh sizes of the sampler [@morin2004]. To account for this bias, we used a procedure to exclude small body sizes to allow for unbiased estimation of $\lambda$. However, this approach leads to differing minimum body sizes from sample to sample. To standardize estimates of abundances to a fixed minimum body size, $m_{min}$, across all samples, we extrapolated abundances to a fixed $m_{min}$ for all samples to the smallest $m_{min}$ estimated across all samples with a PDF normalization procedure. First, we estimated the lower body size bound with the `estimate_xmin()` function, $m_{min}_{est}$. We then convert the probability distribution to a count density function using the total count within the body size range $[m_{min}_{est},m_{max}]$ as:
+As mentioned above, sampling of organisms contains varying known and unknown sources of sampling bias. For macroinvertebrates in particular, small-sized individuals are known to be poorly sampled by standard mesh sizes of the sampler [@morin2004]. Acknowledging this bias, we used a procedure to exclude small body sizes to allow for unbiased estimation of $\lambda$. However, this approach leads to differing minimum body sizes from sample to sample. To standardize estimates of abundances to a fixed minimum body size, $m_{min}$, across all samples, we extrapolated abundances to a fixed $m_{min}$ for all samples to the smallest $m_{min}$ estimated across all samples with a PDF normalization procedure. First, we estimated the lower body size bound with the `estimate_xmin()` function, $m_{min}_{est}$. We then convert the probability distribution to a count density function using the total count within the body size range $[m_{min}_{est},m_{max}]$ as:
 
 $$ n = \int_{m_{min}}^{m_{max}} cm^{\lambda} dm$$
 
@@ -369,16 +390,24 @@ $$ c = n \frac{(\lambda + 1)}{m_{max}^{\lambda + 1} - m_{min}^{\lambda +1}}$$
 $c$ is directly proportional to $n$. Therefore, if we have adequately sampled the community from which we are estimating $\lambda$ and we make the assumption that the power law structure of distribution of body sizes holds to lower body sizes, $c$ acts as a location parameter to scale expected abundance to a different minimum body size $m_{min}_{new}$ as:
 
 $$N_{new} = N_{cutoff} \cdot \frac{m_{max}^{\lambda + 1} - m_{min}_{est}^{\lambda + 1}}{m_{max}^{\lambda + 1} - m_{min}_{new}^{\lambda + 1}}$$
-See Supplemental Materials for further derivation. Maximum body size, $m_{max}$, was set as the maximum body size observed in the sample. We did not adjust $m_{max}$ because there was no known sampling bias for larger body sizes, as there is for smaller body sizes, and the upper size limit is likely a function of the maximum body size attainable in the community--an attribute with ecological determinant--and the sampling effort, which was similar across sites and sampling events. Further, total community abundances are likley to be minimally influenced by the upper bound because abundances in upper part of the mass range are considerably lower than in the lower size range. 
+See Supplemental Materials for further derivation. Maximum body size, $m_{max}$, was set as the maximum body size observed in the sample. We did not adjust $m_{max}$ because there was no known sampling bias for larger body sizes, as there is for smaller body sizes, and the upper size limit is likely a function of the maximum body size attainable in the community--an attribute with ecological determinant--and the sampling effort, which was similar across sites and sampling events. Further, total community abundances are likely to be minimally influenced by the upper bound because abundances in upper part of the mass range are considerably lower than in the lower size range. 
 
 ### Cross community scaling ($N \sim M$)
 
-To estimate the cross community scaling relationship, we first went through a process to account for systematic undersampling of small individuals in the data set. This is a known problem,
+To estimate the cross community scaling relationship, we calculated the total community abundance corrected to a standardized $m_{min}$ as described above. For mean body size, we estimated the expected mean body size for each sample derived from the individual size distribution where the expectation for the mean body size, $E(m)$ is:
+
+$$E(m) = \frac{(\lambda + 1)}{(m_{max}^{\lambda + 1} - m_{min}^{\lambda + 1})} \cdot \frac{(m_{max}^{\lambda + 2} - m_{min}^{\lambda + 2})}{(\lambda + 2)}$$
+See Supplemental Materials for full derivation of this value.
+
+### Estimating over- and under-yielding of individuals
+
+To estimate over- and under-yielding of individuals across sites, we compared the observed total community abundance to abundance predicted from the line of constant yield, $N \propto \overline{M}^{-1}$ fit to the mean-centered total community abundance and mean community biomass across all samples. The deviations between predicted and observed were calculated with positive and negative deviations representing over- and under-yielding, respetively. These deviations were used for additional analysis on the determinants of over- and under-yielding across stream sites.
+
+ 
 
 
 
-
-We fit all models in `rstan` [@stan2024] via the `brms` [@bürkner2017] and `isdbayes` [@wesner2023a] packages in R. Model fit was checked using posterior predictive checks and prior influence was checked using prior predictive simulation (Fig. S3-5).
+We fit all models in `rstan` [@stan2024] via the `brms` [@bürkner2017] and `isdbayes` [@wesner2023a] packages in R. Model fit was checked using posterior predictive checks and prior influence was checked using prior predictive simulation (Fig. XXX).
 
 ## Richness models
 
@@ -750,7 +779,7 @@ saveRDS(nm_plot, here('doc/plots/nm_plot.rds'))
 
 ```
 
-As suggested by the steeper $B \propto \overline M$ scaling, the scaling of community abundance ($N$) with $\overline M$ was shallower than the the -1 predicted by theory. This predicted relationship $N \sim \overline M^{-1}$ represents the line of constant yield, or the line of constant biomass for communities of different $\overline M$. The estimated $N \propto \overline M$ relationship was consistently negative, with a mean estimated scaling slope of `r round(NM_bwt_slope[1],2)` [`r round(NM_bwt_slope[3],2)` -- `r round(NM_bwt_slope[4],2)` 95% CrI]. This relationship agrees with the patterns in $B \propto \overline M$ that stream communities with larger $\overline M$ have more individuals and support more biomass than communities with smaller $\overline M$, even after we account for $\overline M$. This gives us a framework to explore the differences in how communities "overyield" or maintain higher biomass than expected at a given body size. To do this, we can calculate the deviations from AT predictions, which reflect the under- and over-yielding of communities away from a constant biomass yield. 
+<!-- As suggested by the steeper $B \propto \overline M$ scaling, the scaling of community abundance ($N$) with $\overline M$ was shallower than the the -1 predicted by theory. This predicted relationship $N \sim \overline M^{-1}$ represents the line of constant yield, or the line of constant biomass for communities of different $\overline M$. The estimated $N \propto \overline M$ relationship was consistently negative, with a mean estimated scaling slope of `r round(NM_bwt_slope[1],2)` [`r round(NM_bwt_slope[3],2)` -- `r round(NM_bwt_slope[4],2)` 95% CrI]. This relationship agrees with the patterns in $B \propto \overline M$ that stream communities with larger $\overline M$ have more individuals and support more biomass than communities with smaller $\overline M$, even after we account for $\overline M$. This gives us a framework to explore the differences in how communities "overyield" or maintain higher biomass than expected at a given body size. To do this, we can calculate the deviations from AT predictions, which reflect the under- and over-yielding of communities away from a constant biomass yield.  -->
 
 ## Richness-Lambda relationships
 
@@ -1125,7 +1154,7 @@ saveRDS(resid_lambda_plot, here('doc/plots/resid_lambda_plot.rds'))
 
 ## Richness-Lambda relationships
 
-```{r richness prediction}
+```{r richness prediction2}
 
 output =
   capture.output(
