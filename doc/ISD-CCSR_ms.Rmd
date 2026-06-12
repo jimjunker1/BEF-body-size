@@ -486,7 +486,7 @@ saveRDS(b_s_pred_plot, here('doc/plots/b_s_pred_plot.rds'))
 
 ```
 
-BEF frameworks suggest higher community species richness should lead to higher community biomass. We estimated the biomass~richness scaling relationship, $\theta$, which represents the relationship, $log(B) \propto log(S)$, with richness measured as the Hill number = 0 ($hill_0$). Community biomass had a `r round((1 - perc_pos_hill(0.001))*100,1)` probability of a positively scaling with species richness ($\theta$ = `r round(b_s_lmm_hill[1], 2)` [`r round(quantile(b_s_draws, c(0.025)),2)` -- `r round(quantile(b_s_draws, c(0.975)),2)`]; mean $\pm$ 95% credible interval [CrI]), with ~`r round(bayes_R2(b_s_lmm)[1]*100)`% of the variation in across stream community biomass explained by richness. 
+<!-- BEF frameworks suggest higher community species richness should lead to higher community biomass. We estimated the biomass~richness scaling relationship, $\theta$, which represents the relationship, $log(B) \propto log(S)$, with richness measured as the Hill number = 0 ($hill_0$). Community biomass had a `r round((1 - perc_pos_hill(0.001))*100,1)` probability of a positively scaling with species richness ($\theta$ = `r round(b_s_lmm_hill[1], 2)` [`r round(quantile(b_s_draws, c(0.025)),2)` -- `r round(quantile(b_s_draws, c(0.975)),2)`]; mean $\pm$ 95% credible interval [CrI]), with ~`r round(bayes_R2(b_s_lmm)[1]*100)`% of the variation in across stream community biomass explained by richness.  -->
 
 ## Allometric models
 
@@ -675,7 +675,7 @@ saveRDS(b_m_n_pred_plot, here('doc/plots/b_m_n_pred_plot.rds'))
 
 ```
 
-Alternatively, allometric theory predicts community biomass should scale with mean community body size ($\overline M$). We estimated the biomass~$\overline M$ scaling relationship, $\beta$, which represents the relationship, $log(B) \propto log(\overline M)$, with $\overline M$ calculated as the mean community body size weighted by relative biomass in the community, $\overline M_{B-weighted}$. Community biomass had a strong, consistent positive scaling with $\overline M$, and this relationship was steeper than the 0.25 predicted by AT ($\beta$ = `r round(b_m_lmm_fix[1], 2)` [`r round(quantile(b_m_draws, c(0.025)),2)` -- `r round(quantile(b_m_draws, c(0.975)),2)`]; mean $\pm$ 95% CrI), with ~`r round(bayes_R2(b_m_lmm)[1]*100)`% of the variation in across stream community biomass explained by $\overline M$.
+<!-- Alternatively, allometric theory predicts community biomass should scale with mean community body size ($\overline M$). We estimated the biomass~$\overline M$ scaling relationship, $\beta$, which represents the relationship, $log(B) \propto log(\overline M)$, with $\overline M$ calculated as the mean community body size weighted by relative biomass in the community, $\overline M_{B-weighted}$. Community biomass had a strong, consistent positive scaling with $\overline M$, and this relationship was steeper than the 0.25 predicted by AT ($\beta$ = `r round(b_m_lmm_fix[1], 2)` [`r round(quantile(b_m_draws, c(0.025)),2)` -- `r round(quantile(b_m_draws, c(0.975)),2)`]; mean $\pm$ 95% CrI), with ~`r round(bayes_R2(b_m_lmm)[1]*100)`% of the variation in across stream community biomass explained by $\overline M$. -->
 
 ## Allometric predictions
 
@@ -779,7 +779,8 @@ saveRDS(nm_plot, here('doc/plots/nm_plot.rds'))
 
 ```
 
-<!-- As suggested by the steeper $B \propto \overline M$ scaling, the scaling of community abundance ($N$) with $\overline M$ was shallower than the the -1 predicted by theory. This predicted relationship $N \sim \overline M^{-1}$ represents the line of constant yield, or the line of constant biomass for communities of different $\overline M$. The estimated $N \propto \overline M$ relationship was consistently negative, with a mean estimated scaling slope of `r round(NM_bwt_slope[1],2)` [`r round(NM_bwt_slope[3],2)` -- `r round(NM_bwt_slope[4],2)` 95% CrI]. This relationship agrees with the patterns in $B \propto \overline M$ that stream communities with larger $\overline M$ have more individuals and support more biomass than communities with smaller $\overline M$, even after we account for $\overline M$. This gives us a framework to explore the differences in how communities "overyield" or maintain higher biomass than expected at a given body size. To do this, we can calculate the deviations from AT predictions, which reflect the under- and over-yielding of communities away from a constant biomass yield.  -->
+As suggested by the steeper $B \propto \overline M$ scaling, the scaling of community abundance ($N$) with $\overline M$ was shallower than the the -1 predicted by theory. This predicted relationship $N \sim \overline M^{-1}$ represents the line of constant yield, or the line of constant biomass for communities of different $\overline M$. The estimated $N \propto \overline M$ relationship was consistently negative, with a mean estimated scaling slope of `r round(NM_nwt_slope[1],2)` [`r round(NM_nwt_slope[3],2)` -- `r round(NM_nwt_slope[4],2)` 95% CrI]. This relationship agrees with the patterns in $B \propto \overline M$ that stream communities with larger $\overline M$ have more individuals and support more biomass than communities with smaller $\overline M$, even after we account for $\overline M$. This gives us a framework to explore the differences in how communities "overyield" or maintain higher biomass than expected at a given body size. To do this, we can calculate the deviations from AT pred
+ictions, which reflect the under- and over-yielding of communities away from a constant biomass yield.
 
 ## Richness-Lambda relationships
 
@@ -932,6 +933,7 @@ saveRDS(lambda_m_sigma_plot, here('doc/plots/lambda_m_sigma_plot.rds'))
 
 
 dat %>% ggplot()+geom_point(aes(x = Lhill_0, y = ln_est))
+
 ```
 
 
@@ -1475,9 +1477,9 @@ dat %>%
 
 # Results
 
-Total community abundances ranged ~`r (dat %>% dplyr::select(ln_est) %>% max - dat %>% dplyr::select(ln_est) %>% min) %>% round` order of magnitude from `r dat %>% dplyr::select(n_tot) %>% min %>% signif(2) %>% format(scientific = TRUE)` to `r dat %>% dplyr::select(n_tot) %>% max %>% signif(2) %>% format(scientific = TRUE)` with average community abundance of `r dat %>% dplyr::select(n_tot) %>% unlist %>%  mean(na.rm = TRUE) %>% signif(2) %>% format(scientific = TRUE)` $\pm$ `r dat %>% dplyr::select(n_tot) %>% unlist %>% sd %>% signif(2) %>% format(scientific = TRUE)` individuals m^-2^. Community mean body sizes exhibited a similar range  from `r dat %>% dplyr::select(mbar_n) %>% min %>% signif(2) %>% format(scientific = TRUE)` to `r dat %>% dplyr::select(mbar_n) %>% max %>% signif(2) %>% format(scientific = TRUE)` with an average community mean body size of `r dat %>% dplyr::select(mbar_n) %>% unlist %>% mean(na.rm = TRUE) %>% round(2)` $\pm$ `r dat %>% dplyr::select(mbar_n) %>% unlist %>% sd(na.rm = TRUE) %>% round(2)` mg dry mass individual^-1^. 
+<!-- Total community abundances ranged ~`r (dat %>% dplyr::select(ln_est) %>% max - dat %>% dplyr::select(ln_est) %>% min) %>% round` order of magnitude from `r dat %>% dplyr::select(n_tot) %>% min %>% signif(2) %>% format(scientific = TRUE)` to `r dat %>% dplyr::select(n_tot) %>% max %>% signif(2) %>% format(scientific = TRUE)` with average community abundance of `r dat %>% dplyr::select(n_tot) %>% unlist %>%  mean(na.rm = TRUE) %>% signif(2) %>% format(scientific = TRUE)` $\pm$ `r dat %>% dplyr::select(n_tot) %>% unlist %>% sd %>% signif(2) %>% format(scientific = TRUE)` individuals m^-2^. Community mean body sizes exhibited a similar range  from `r dat %>% dplyr::select(mbar_n) %>% min %>% signif(2) %>% format(scientific = TRUE)` to `r dat %>% dplyr::select(mbar_n) %>% max %>% signif(2) %>% format(scientific = TRUE)` with an average community mean body size of `r dat %>% dplyr::select(mbar_n) %>% unlist %>% mean(na.rm = TRUE) %>% round(2)` $\pm$ `r dat %>% dplyr::select(mbar_n) %>% unlist %>% sd(na.rm = TRUE) %>% round(2)` mg dry mass individual^-1^.  -->
 
-Total community biomass estimates ranged from `r dat_summ %>% dplyr::select(b_est) %>% min %>% magrittr::divide_by(1000) %>% round(2)` to `r dat_summ %>% dplyr::select(b_est) %>% max %>% magrittr::divide_by(1000) %>% round(2)` 
+<!-- Total community biomass estimates ranged from `r dat_summ %>% dplyr::select(b_est) %>% min %>% magrittr::divide_by(1000) %>% round(2)` to `r dat_summ %>% dplyr::select(b_est) %>% max %>% magrittr::divide_by(1000) %>% round(2)`  -->
 
 To explore drivers of over- or under-yielding, 
 
